@@ -1,11 +1,10 @@
-package(default_visibility = ["//visibility:public"])
-
 cc_binary(
     name = "thttpd",
     srcs = [
         "main.cc",
     ],
     deps = [
+        "//base:logging",
         "@absl//absl/memory",
         "@absl//absl/strings",
         "@absl//absl/types:span",

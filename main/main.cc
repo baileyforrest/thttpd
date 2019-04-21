@@ -10,13 +10,13 @@
 #include <array>
 #include <cstdint>
 #include <cstdlib>
-#include <iostream>
 
 #include "absl/base/macros.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "base/logging.h"
 
 namespace {
 
@@ -116,7 +116,7 @@ int main(int argc, char** argv) {
     }
   }
 
-  std::cout << "Listening on port " << port << "\n";
+  LOG(INFO) << "Listening on port " << port;
 
   sockaddr_in6 addr = {
       .sin6_family = AF_INET6, .sin6_port = htons(port),
@@ -183,7 +183,7 @@ int main(int argc, char** argv) {
           warn("get_in_addr");
         } else {
           addr_str[sizeof(addr_str) - 1] = '\0';
-          std::cout << "Connection from: " << addr_str << "\n";
+          LOG(INFO) << "Connection from: " << addr_str;
         }
 
         continue;
@@ -199,8 +199,7 @@ int main(int argc, char** argv) {
         continue;
       }
       buf[ret] = '\0';
-      std::cout << "Got request:\n";
-      std::cout << buf << "\n";
+      LOG(INFO) << "Got request:\n " << buf;
 
       if (send(fd, kResponse, strlen(kResponse), MSG_NOSIGNAL | MSG_DONTWAIT) <
           0) {
