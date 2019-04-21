@@ -1,4 +1,5 @@
 build --copt="-Wall" --copt="-Wextra" --copt="-Werror"
+build --copt="-Wno-missing-field-initializers"
 
 build:asan -c dbg
 build:asan --copt="-fsanitize=address" --linkopt="-fsanitize=address"
