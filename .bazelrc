@@ -1,0 +1,6 @@
+build --copt="-Wall" --copt="-Wextra" --copt="-Werror"
+
+build:asan -c dbg
+build:asan --copt="-fsanitize=address" --linkopt="-fsanitize=address"
+build:asan --copt="-fsanitize=leak" --linkopt="-fsanitize=leak"
+build:asan --copt="-fsanitize=undefined" --linkopt="-fsanitize=undefined"
