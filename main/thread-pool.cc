@@ -22,7 +22,11 @@ std::vector<std::unique_ptr<TaskRunner>> MakeTaskRunners(size_t num) {
 ThreadPool::ThreadPool(size_t size) : task_runners_(MakeTaskRunners(size)) {}
 
 void ThreadPool::PostTask(Task task) {
+  GetNextRunner()->PostTask(std::move(task));
+}
+
+TaskRunner* ThreadPool::GetNextRunner() {
   uint64_t idx = next_task_runner_.fetch_add(1, std::memory_order_acq_rel);
   idx %= task_runners_.size();
-  task_runners_[idx]->PostTask(std::move(task));
+  return task_runners_[idx].get();
 }

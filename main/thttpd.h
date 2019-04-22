@@ -4,7 +4,9 @@
 #include <memory>
 
 #include "absl/base/attributes.h"
+#include "absl/container/flat_hash_map.h"
 #include "base/err.h"
+#include "main/request-handler.h"
 #include "main/thread-pool.h"
 
 class Thttpd {
@@ -26,11 +28,12 @@ class Thttpd {
  private:
   explicit Thttpd(const Config& config);
 
-  void AcceptNewClient(int listen_fd, int epoll_fd) const;
+  void AcceptNewClient(int listen_fd, int epoll_fd);
 
   const uint16_t port_;
   const int verbosity_;
   ThreadPool thread_pool_;
+  absl::flat_hash_map<int, std::shared_ptr<RequestHandler>> conn_fd_to_handler_;
 };
 
 #endif  // MAIN_THTTPD_H_

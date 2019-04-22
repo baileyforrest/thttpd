@@ -23,93 +23,6 @@ namespace {
 constexpr int kListenBacklog = 128;
 constexpr int kMaxEvents = 4096;
 
-constexpr char kResponse[] = R"http(HTTP/1.1 200 OK
-Accept-Ranges: bytes
-Cache-Control: max-age=604800
-Content-Type: text/html; charset=UTF-8
-Date: Sun, 21 Apr 2019 10:08:17 GMT
-Etag: "1541025663+gzip"
-Expires: Sun, 28 Apr 2019 10:08:17 GMT
-Last-Modified: Fri, 09 Aug 2013 23:54:35 GMT
-Server: ECS (sjc/4E8B)
-Vary: Accept-Encoding
-X-Cache: HIT
-Content-Length: 1257
-
-<!doctype html>
-<html>
-<head>
-    <title>Example Domain</title>
-
-    <meta charset="utf-8" />
-    <meta http-equiv="Content-type" content="text/html; charset=utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <style type="text/css">
-    body {
-        background-color: #f0f0f2;
-        margin: 0;
-        padding: 0;
-        font-family: "Open Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
-    }
-    div {
-        width: 600px;
-        margin: 5em auto;
-        padding: 50px;
-        background-color: #fff;
-        border-radius: 1em;
-    }
-    a:link, a:visited {
-        color: #38488f;
-        text-decoration: none;
-    }
-    @media (max-width: 700px) {
-        body {
-            background-color: #fff;
-        }
-        div {
-            width: auto;
-            margin: 0 auto;
-            border-radius: 0;
-            padding: 1em;
-        }
-    }
-    </style>
-</head>
-
-<body>
-<div>
-    <h1>Example Domain</h1>
-    <p>This domain is established to be used for illustrative examples in documents. You may use this
-    domain in examples without prior coordination or asking for permission.</p>
-    <p><a href="http://www.iana.org/domains/example">More information...</a></p>
-</div>
-</body>
-</html>
-)http";
-
-void HandleExistingClient(int fd, int epoll_events) {
-  char buf[BUFSIZ];
-  ssize_t ret = recv(fd, buf, sizeof(buf) - 1, /*flags=*/0);
-  if (ret < 0) {
-    LOG(ERR) << "recv failed: " << strerror(errno);
-    close(fd);
-    return;
-  }
-  if (ret == 0) {
-    close(fd);
-    return;
-  }
-  buf[ret] = '\0';
-  LOG(INFO) << "Got request:\n " << buf;
-
-  if (send(fd, kResponse, strlen(kResponse), MSG_NOSIGNAL | MSG_DONTWAIT) < 0) {
-    LOG(ERR) << "send failed: " << strerror(errno);
-    close(fd);
-    return;
-  }
-  close(fd);
-}
-
 }  // namespace
 
 // static
@@ -189,15 +102,39 @@ Result<void> Thttpd::Start() {
         continue;
       }
 
-      int events = event.events;
-      thread_pool_.PostTask([fd, events] { HandleExistingClient(fd, events); });
+      auto it = conn_fd_to_handler_.find(fd);
+      if (it == conn_fd_to_handler_.end()) {
+        close(fd);
+        LOG(ERR) << "Unknown socket!";
+        continue;
+      }
+
+      bool can_read = event.events & EPOLLIN;
+      bool can_write = event.events & EPOLLOUT;
+
+      // Check if the socket was closed.
+      if (can_read) {
+        char byte;
+        ssize_t avail = recv(fd, &byte, sizeof(byte), MSG_PEEK);
+        if (avail == 0) {
+          conn_fd_to_handler_.erase(fd);
+          close(fd);
+          continue;
+        }
+      }
+
+      std::shared_ptr<RequestHandler>& request_handler = it->second;
+      request_handler->task_runner()->PostTask(
+          [request_handler, can_read, can_write] {
+            request_handler->HandleUpdate(can_read, can_write);
+          });
     }
   }
 
   return {};
 }
 
-void Thttpd::AcceptNewClient(int listen_fd, int epoll_fd) const {
+void Thttpd::AcceptNewClient(int listen_fd, int epoll_fd) {
   sockaddr_storage remote_addr;
   socklen_t remote_addr_len = sizeof(remote_addr);
   int conn_sock = accept4(listen_fd, reinterpret_cast<sockaddr*>(&remote_addr),
@@ -215,6 +152,10 @@ void Thttpd::AcceptNewClient(int listen_fd, int epoll_fd) const {
     LOG(ERR) << "epoll_ctl on conn_sock failed failed : " << strerror(errno);
     return;
   }
+
+  conn_fd_to_handler_.emplace(
+      conn_sock, absl::make_unique<RequestHandler>(thread_pool_.GetNextRunner(),
+                                                   conn_sock));
 
   if (verbosity_ >= 1) {
     char addr_str[INET6_ADDRSTRLEN];

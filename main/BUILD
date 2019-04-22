@@ -18,10 +18,27 @@ cc_library(
         "thttpd.h",
     ],
     deps = [
+        ":request-handler",
         ":thread-pool",
         "//base",
+        "@absl//absl/container:flat_hash_map",
         "@absl//absl/memory",
         "@absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "request-handler",
+    srcs = [
+        "request-handler.cc",
+    ],
+    hdrs = [
+        "request-handler.h",
+    ],
+    deps = [
+        "//base",
+        "//base:task-runner",
+        "@absl//absl/memory",
     ],
 )
 

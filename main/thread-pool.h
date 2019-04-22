@@ -17,6 +17,8 @@ class ThreadPool {
   // Thread safe.
   void PostTask(Task task);
 
+  TaskRunner* GetNextRunner();
+
  private:
   const std::vector<std::unique_ptr<TaskRunner>> task_runners_;
   std::atomic<uint64_t> next_task_runner_{0};
