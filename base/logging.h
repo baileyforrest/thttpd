@@ -7,6 +7,7 @@ class Logger {
  public:
   enum class Type {
     INFO,
+    WARN,
     ERR,
   };
 

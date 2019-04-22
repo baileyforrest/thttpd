@@ -4,30 +4,48 @@ cc_binary(
         "main.cc",
     ],
     deps = [
-        "//base:logging",
+        ":libthttpd",
+        "//base",
+    ],
+)
+
+cc_library(
+    name = "libthttpd",
+    srcs = [
+        "thttpd.cc",
+    ],
+    hdrs = [
+        "thttpd.h",
+    ],
+    deps = [
+        "//base",
         "@absl//absl/memory",
-        "@absl//absl/strings",
+        "@absl//absl/strings:str_format",
         "@absl//absl/types:span",
     ],
 )
 
 cc_library(
-    name = "foo",
+    name = "thread-pool",
     srcs = [
-        "foo.cc",
+        "thread-pool.cc",
     ],
     hdrs = [
-        "foo.h",
+        "thread-pool.h",
+    ],
+    deps = [
+        "//base:task-runner",
+        "@absl//absl/memory",
     ],
 )
 
 cc_test(
-    name = "foo_test",
+    name = "thread-pool_test",
     srcs = [
-        "foo_test.cc",
+        "thread-pool_test.cc",
     ],
     deps = [
-        ":foo",
+        ":thread-pool",
         "@gtest//:gtest_main",
     ],
 )

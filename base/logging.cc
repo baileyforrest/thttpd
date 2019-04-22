@@ -10,6 +10,8 @@ const char* Logger::TypeString(Type type) {
   switch (type) {
     case Type::INFO:
       return "INFO";
+    case Type::WARN:
+      return "WARN";
     case Type::ERR:
       return "ERR";
   }
@@ -33,6 +35,6 @@ Logger::Logger(Type type, const char* file, int line) : type_(type) {
 }
 
 Logger::~Logger() {
-  auto& out_stream = type_ == Type::INFO ? std::cout : std::cerr;
+  auto& out_stream = type_ == Type::ERR ? std::cerr : std::cout;
   out_stream << stream_.str() << "\n";
 }

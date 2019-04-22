@@ -14,13 +14,13 @@ TaskRunner::~TaskRunner() {
   thread_.join();
 }
 
-void TaskRunner::PostTask(Closure f) {
+void TaskRunner::PostTask(Task task) {
   std::unique_lock<std::mutex> lock(mutex_);
-  tasks_.push(std::move(f));
+  tasks_.push(std::move(task));
   has_task_cv_.notify_one();
 }
 
-void TaskRunner::PostDelayedTask(Closure f, const Duration& delay) {
+void TaskRunner::PostDelayedTask(Task task, const Duration& delay) {
   auto run_at = std::chrono::steady_clock::now() + delay;
 
   std::unique_lock<std::mutex> lock(mutex_);
@@ -29,7 +29,7 @@ void TaskRunner::PostDelayedTask(Closure f, const Duration& delay) {
     if (run_at <= it->first) break;
   }
 
-  delayed_tasks_.insert(it, std::make_pair(run_at, std::move(f)));
+  delayed_tasks_.insert(it, std::make_pair(run_at, std::move(task)));
   has_task_cv_.notify_one();
 }
 
@@ -61,13 +61,13 @@ void TaskRunner::RunLoop() {
       }
     }
 
-    Closure f;
+    Task task;
     if (!tasks_.empty()) {
-      f = std::move(tasks_.front());
+      task = std::move(tasks_.front());
       tasks_.pop();
     } else if (!delayed_tasks_.empty()) {
       assert(std::chrono::steady_clock::now() >= delayed_tasks_.front().first);
-      f = std::move(delayed_tasks_.front().second);
+      task = std::move(delayed_tasks_.front().second);
       delayed_tasks_.pop_front();
     } else {
       assert(false);
@@ -78,6 +78,6 @@ void TaskRunner::RunLoop() {
     }
 
     lock.unlock();
-    f();
+    task();
   }
 }

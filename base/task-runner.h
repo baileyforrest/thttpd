@@ -12,7 +12,7 @@
 // TODO(bcf): Consider using lock free queue.
 class TaskRunner {
  public:
-  using Closure = std::function<void()>;
+  using Task = std::function<void()>;
   using Duration = std::chrono::duration<int64_t>;
 
   TaskRunner();
@@ -23,8 +23,8 @@ class TaskRunner {
   // tasks are dropped.
   ~TaskRunner();
 
-  void PostTask(Closure f);
-  void PostDelayedTask(Closure f, const Duration& delay);
+  void PostTask(Task task);
+  void PostDelayedTask(Task task, const Duration& delay);
   void WaitUntilIdle();
 
  private:
@@ -47,6 +47,6 @@ class TaskRunner {
   // True if the task runner is still running.
   bool running_ = true;
 
-  std::queue<Closure> tasks_;
-  std::deque<std::pair<SteadyTimePoint, Closure>> delayed_tasks_;
+  std::queue<Task> tasks_;
+  std::deque<std::pair<SteadyTimePoint, Task>> delayed_tasks_;
 };
