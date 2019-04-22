@@ -18,9 +18,9 @@ cc_library(
         "thttpd.h",
     ],
     deps = [
+        ":thread-pool",
         "//base",
         "@absl//absl/memory",
-        "@absl//absl/strings:str_format",
         "@absl//absl/types:span",
     ],
 )

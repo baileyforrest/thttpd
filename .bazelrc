@@ -1,7 +1,11 @@
 build --copt="-Wall" --copt="-Wextra" --copt="-Werror"
 build --copt="-Wno-missing-field-initializers"
+build --copt="-Wno-unused-parameter"
 
 build:asan -c dbg
 build:asan --copt="-fsanitize=address" --linkopt="-fsanitize=address"
 build:asan --copt="-fsanitize=leak" --linkopt="-fsanitize=leak"
 build:asan --copt="-fsanitize=undefined" --linkopt="-fsanitize=undefined"
+
+build:tsan -c dbg
+build:tsan --copt="-fsanitize=thread" --linkopt="-fsanitize=thread"

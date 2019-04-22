@@ -1,3 +1,5 @@
+#include <limits>
+
 #include "base/logging.h"
 #include "main/thttpd.h"
 
@@ -13,7 +15,15 @@ int main(int argc, char** argv) {
     return EXIT_FAILURE;
   }
 
-  auto thttpd_or = Thttpd::Create(port);
+  if (port > std::numeric_limits<uint16_t>::max()) {
+    LOG(ERR) << "Invalid port number: " << port;
+    return EXIT_FAILURE;
+  }
+
+  Thttpd::Config config;
+  config.port = port;
+
+  auto thttpd_or = Thttpd::Create(config);
   if (!thttpd_or.ok()) {
     LOG(ERR) << "Failed to create Thttpd: " << thttpd_or.err();
     return EXIT_FAILURE;

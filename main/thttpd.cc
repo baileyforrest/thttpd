@@ -11,12 +11,10 @@
 #include <array>
 #include <cstdint>
 #include <cstdlib>
-#include <limits>
 
 #include "absl/base/macros.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/numbers.h"
-#include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "base/logging.h"
 
@@ -89,18 +87,50 @@ Content-Length: 1257
 </html>
 )http";
 
+void HandleExistingClient(int fd, int epoll_events) {
+  char buf[BUFSIZ];
+  ssize_t ret = recv(fd, buf, sizeof(buf) - 1, /*flags=*/0);
+  if (ret < 0) {
+    LOG(ERR) << "recv failed: " << strerror(errno);
+    close(fd);
+    return;
+  }
+  if (ret == 0) {
+    close(fd);
+    return;
+  }
+  buf[ret] = '\0';
+  LOG(INFO) << "Got request:\n " << buf;
+
+  if (send(fd, kResponse, strlen(kResponse), MSG_NOSIGNAL | MSG_DONTWAIT) < 0) {
+    LOG(ERR) << "send failed: " << strerror(errno);
+    close(fd);
+    return;
+  }
+  close(fd);
+}
+
 }  // namespace
 
 // static
-Result<std::unique_ptr<Thttpd>> Thttpd::Create(int port) {
-  if (port > std::numeric_limits<uint16_t>::max()) {
-    return Err(absl::StrFormat("Invalid port number: %d", port));
+Result<std::unique_ptr<Thttpd>> Thttpd::Create(const Config& config_in) {
+  Config config = config_in;
+  if (config.num_worker_threads < 0) {
+    return Err("Must specify a positive number of threads, or 0 to auto pick");
   }
 
-  return absl::WrapUnique(new Thttpd(port));
+  if (config.num_worker_threads == 0) {
+    // TODO(bcf): Choose based number of cores.
+    config.num_worker_threads = 16;
+  }
+
+  return absl::WrapUnique(new Thttpd(config));
 }
 
-Thttpd::Thttpd(int port) : port_(port) {}
+Thttpd::Thttpd(const Config& config)
+    : port_(config.port),
+      verbosity_(config.verbosity),
+      thread_pool_(config.num_worker_threads) {}
 
 Result<void> Thttpd::Start() {
   int listen_fd = socket(PF_INET6, SOCK_STREAM | SOCK_NONBLOCK, /*protocol=*/0);
@@ -155,59 +185,51 @@ Result<void> Thttpd::Start() {
     for (auto& event : absl::MakeSpan(events->data(), num_fds)) {
       int fd = event.data.fd;
       if (fd == listen_fd) {
-        sockaddr_storage remote_addr;
-        socklen_t remote_addr_len = sizeof(remote_addr);
-        int conn_sock =
-            accept4(listen_fd, reinterpret_cast<sockaddr*>(&remote_addr),
-                    &remote_addr_len, SOCK_NONBLOCK);
-        if (conn_sock < 0) {
-          return BuildPosixErr("accept failed");
-        }
-        epoll_event new_event{
-            .events = EPOLLIN | EPOLLET,
-        };
-        new_event.data.fd = conn_sock;
-        if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, conn_sock, &new_event) < 0) {
-          return BuildPosixErr("epoll_ctl on conn_sock failed");
-        }
-
-        char addr_str[INET6_ADDRSTRLEN];
-        void* in_addr = nullptr;
-        if (remote_addr.ss_family == AF_INET) {
-          in_addr = &(reinterpret_cast<sockaddr_in*>(&remote_addr)->sin_addr);
-        } else {
-          in_addr = &(reinterpret_cast<sockaddr_in6*>(&remote_addr)->sin6_addr);
-        }
-        if (inet_ntop(remote_addr.ss_family, in_addr, addr_str,
-                      sizeof(addr_str)) == nullptr) {
-          LOG(WARN) << "inet_ntop failed: " << strerror(errno);
-        } else {
-          addr_str[sizeof(addr_str) - 1] = '\0';
-          LOG(INFO) << "Connection from: " << addr_str;
-        }
-
+        AcceptNewClient(listen_fd, epoll_fd);
         continue;
       }
 
-      char buf[BUFSIZ];
-      ssize_t ret = recv(fd, buf, sizeof(buf) - 1, /*flags=*/0);
-      if (ret < 0) {
-        return BuildPosixErr("recv");
-      }
-      if (ret == 0) {
-        close(fd);
-        continue;
-      }
-      buf[ret] = '\0';
-      LOG(INFO) << "Got request:\n " << buf;
-
-      if (send(fd, kResponse, strlen(kResponse), MSG_NOSIGNAL | MSG_DONTWAIT) <
-          0) {
-        return BuildPosixErr("send");
-      }
-      close(fd);
+      int events = event.events;
+      thread_pool_.PostTask([fd, events] { HandleExistingClient(fd, events); });
     }
   }
 
   return {};
+}
+
+void Thttpd::AcceptNewClient(int listen_fd, int epoll_fd) const {
+  sockaddr_storage remote_addr;
+  socklen_t remote_addr_len = sizeof(remote_addr);
+  int conn_sock = accept4(listen_fd, reinterpret_cast<sockaddr*>(&remote_addr),
+                          &remote_addr_len, SOCK_NONBLOCK);
+  if (conn_sock < 0) {
+    LOG(ERR) << "accept failed : " << strerror(errno);
+    return;
+  }
+  epoll_event new_event{
+      .events = EPOLLIN | EPOLLOUT | EPOLLET,
+  };
+  new_event.data.fd = conn_sock;
+  if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, conn_sock, &new_event) < 0) {
+    close(conn_sock);
+    LOG(ERR) << "epoll_ctl on conn_sock failed failed : " << strerror(errno);
+    return;
+  }
+
+  if (verbosity_ >= 1) {
+    char addr_str[INET6_ADDRSTRLEN];
+    void* in_addr = nullptr;
+    if (remote_addr.ss_family == AF_INET) {
+      in_addr = &(reinterpret_cast<sockaddr_in*>(&remote_addr)->sin_addr);
+    } else {
+      in_addr = &(reinterpret_cast<sockaddr_in6*>(&remote_addr)->sin6_addr);
+    }
+    if (inet_ntop(remote_addr.ss_family, in_addr, addr_str, sizeof(addr_str)) ==
+        nullptr) {
+      LOG(WARN) << "inet_ntop failed: " << strerror(errno);
+    } else {
+      addr_str[sizeof(addr_str) - 1] = '\0';
+      LOG(INFO) << "Connection from: " << addr_str;
+    }
+  }
 }
