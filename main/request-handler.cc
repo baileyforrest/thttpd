@@ -7,6 +7,7 @@
 #include <unistd.h>
 
 #include "base/logging.h"
+#include "main/thttpd.h"
 
 namespace {
 
@@ -75,6 +76,9 @@ Content-Length: 1257
 )http";
 
 }  // namespace
+
+RequestHandler::RequestHandler(Thttpd* thttpd, TaskRunner* task_runner, int fd)
+    : thttpd_(thttpd), task_runner_(task_runner), fd_(fd) {}
 
 void RequestHandler::HandleUpdate(bool can_read, bool can_write) {
   if (can_read) {

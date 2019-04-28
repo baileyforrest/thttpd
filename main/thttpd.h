@@ -6,17 +6,12 @@
 #include "absl/base/attributes.h"
 #include "absl/container/flat_hash_map.h"
 #include "base/err.h"
+#include "main/config.h"
 #include "main/request-handler.h"
 #include "main/thread-pool.h"
 
 class Thttpd {
  public:
-  struct Config {
-    uint16_t port = 0;
-    int num_worker_threads = 0;  // If 0, will pick based on number of cores.
-    int verbosity = 1;
-  };
-
   Thttpd(const Thttpd&) = delete;
   Thttpd& operator=(const Thttpd&) = delete;
 
@@ -25,13 +20,14 @@ class Thttpd {
   // Blocks.
   ABSL_MUST_USE_RESULT Result<void> Start();
 
+  const Config* config() const { return &config_; }
+
  private:
   explicit Thttpd(const Config& config);
 
   void AcceptNewClient(int listen_fd, int epoll_fd);
 
-  const uint16_t port_;
-  const int verbosity_;
+  const Config config_;
   ThreadPool thread_pool_;
   absl::flat_hash_map<int, std::shared_ptr<RequestHandler>> conn_fd_to_handler_;
 };

@@ -1,11 +1,15 @@
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
+
 #include <limits>
 
 #include "base/logging.h"
 #include "main/thttpd.h"
 
 int main(int argc, char** argv) {
-  if (argc < 2) {
-    LOG(ERR) << "Need port";
+  if (argc < 3) {
+    LOG(ERR) << "Usage: " << argv[0] << " port path_to_serve";
     return EXIT_FAILURE;
   }
 
@@ -20,10 +24,22 @@ int main(int argc, char** argv) {
     return EXIT_FAILURE;
   }
 
+  std::string path_to_serve = argv[2];
+  struct stat stat_buf;
+  if (stat(path_to_serve.c_str(), &stat_buf) < 0) {
+    LOG(ERR) << "Failed to stat " << path_to_serve << ": " << strerror(errno);
+    return EXIT_FAILURE;
+  }
+
+  if (!S_ISDIR(stat_buf.st_mode)) {
+    LOG(ERR) << "Not a directory: " << path_to_serve;
+    return EXIT_FAILURE;
+  }
+
   // TODO(bcf): Add flag for this.
   gVerboseLogLevel = 4;
 
-  Thttpd::Config config;
+  Config config;
   config.port = port;
 
   auto thttpd_or = Thttpd::Create(config);

@@ -6,10 +6,11 @@
 #include "base/task-runner.h"
 #include "main/request-parser.h"
 
+class Thttpd;
+
 class RequestHandler {
  public:
-  RequestHandler(TaskRunner* task_runner, int fd)
-      : task_runner_(task_runner), fd_(fd) {}
+  RequestHandler(Thttpd* thttpd, TaskRunner* task_runner, int fd);
   RequestHandler(const RequestHandler&) = delete;
   RequestHandler operator=(const RequestHandler&) = delete;
 
@@ -21,6 +22,7 @@ class RequestHandler {
  private:
   void CloseSocket();
 
+  Thttpd* const thttpd_;
   TaskRunner* const task_runner_;
   const int fd_;
 

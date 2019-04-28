@@ -10,6 +10,13 @@ cc_binary(
 )
 
 cc_library(
+    name = "config",
+    hdrs = [
+        "config.h",
+    ],
+)
+
+cc_library(
     name = "file-reader",
     srcs = [
         "file-reader.cc",
@@ -42,34 +49,22 @@ cc_library(
 cc_library(
     name = "libthttpd",
     srcs = [
+        "request-handler.cc",
+        "request-handler.h",
         "thttpd.cc",
     ],
     hdrs = [
         "thttpd.h",
     ],
     deps = [
-        ":request-handler",
+        ":config",
+        ":request-parser",
         ":thread-pool",
         "//base",
+        "//base:task-runner",
         "@absl//absl/container:flat_hash_map",
         "@absl//absl/memory",
         "@absl//absl/types:span",
-    ],
-)
-
-cc_library(
-    name = "request-handler",
-    srcs = [
-        "request-handler.cc",
-    ],
-    hdrs = [
-        "request-handler.h",
-    ],
-    deps = [
-        ":request-parser",
-        "//base",
-        "//base:task-runner",
-        "@absl//absl/memory",
     ],
 )
 

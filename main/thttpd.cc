@@ -41,9 +41,7 @@ Result<std::unique_ptr<Thttpd>> Thttpd::Create(const Config& config_in) {
 }
 
 Thttpd::Thttpd(const Config& config)
-    : port_(config.port),
-      verbosity_(config.verbosity),
-      thread_pool_(config.num_worker_threads) {}
+    : config_(config), thread_pool_(config.num_worker_threads) {}
 
 Result<void> Thttpd::Start() {
   int listen_fd = socket(PF_INET6, SOCK_STREAM | SOCK_NONBLOCK, /*protocol=*/0);
@@ -60,7 +58,7 @@ Result<void> Thttpd::Start() {
   }
 
   sockaddr_in6 addr = {
-      .sin6_family = AF_INET6, .sin6_port = htons(port_),
+      .sin6_family = AF_INET6, .sin6_port = htons(config_.port),
   };
   addr.sin6_addr = in6addr_any;
   if (bind(listen_fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0) {
@@ -71,7 +69,7 @@ Result<void> Thttpd::Start() {
     return BuildPosixErr("listen failed");
   }
 
-  LOG(INFO) << "Listening on port " << port_;
+  LOG(INFO) << "Listening on port " << config_.port;
 
   int epoll_fd = epoll_create1(/*flags=*/0);
   if (epoll_fd < 0) {
@@ -154,10 +152,10 @@ void Thttpd::AcceptNewClient(int listen_fd, int epoll_fd) {
   }
 
   conn_fd_to_handler_.emplace(
-      conn_sock, absl::make_unique<RequestHandler>(thread_pool_.GetNextRunner(),
-                                                   conn_sock));
+      conn_sock, std::make_shared<RequestHandler>(
+                     this, thread_pool_.GetNextRunner(), conn_sock));
 
-  if (verbosity_ >= 1) {
+  if (config_.verbosity >= 1) {
     char addr_str[INET6_ADDRSTRLEN];
     void* in_addr = nullptr;
     if (remote_addr.ss_family == AF_INET) {
