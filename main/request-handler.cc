@@ -97,6 +97,7 @@ void RequestHandler::HandleUpdate(bool can_read, bool can_write) {
       auto state = request_parser_.AddData({buf, static_cast<size_t>(ret)});
       switch (state) {
         case RequestParser::State::kInvalid:
+          // TODO(bcf): Send 400 error.
           VLOG(1) << "Parsing request failed";
           break;
         case RequestParser::State::kReady: {

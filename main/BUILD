@@ -10,6 +10,21 @@ cc_binary(
 )
 
 cc_library(
+    name = "file-reader",
+    srcs = [
+        "file-reader.cc",
+    ],
+    hdrs = [
+        "file-reader.h",
+    ],
+    deps = [
+        "//base",
+        "@absl//absl/strings",
+        "@absl//absl/types:span",
+    ],
+)
+
+cc_library(
     name = "http-request",
     srcs = [
         "http-request.cc",
