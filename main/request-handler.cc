@@ -6,74 +6,15 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include <utility>
+
 #include "base/logging.h"
+#include "base/util.h"
 #include "main/thttpd.h"
 
 namespace {
 
-constexpr char kResponse[] = R"http(HTTP/1.1 200 OK
-Accept-Ranges: bytes
-Cache-Control: max-age=604800
-Content-Type: text/html; charset=UTF-8
-Date: Sun, 21 Apr 2019 10:08:17 GMT
-Etag: "1541025663+gzip"
-Expires: Sun, 28 Apr 2019 10:08:17 GMT
-Last-Modified: Fri, 09 Aug 2013 23:54:35 GMT
-Server: ECS (sjc/4E8B)
-Vary: Accept-Encoding
-X-Cache: HIT
-Content-Length: 1257
-
-<!doctype html>
-<html>
-<head>
-    <title>Example Domain</title>
-
-    <meta charset="utf-8" />
-    <meta http-equiv="Content-type" content="text/html; charset=utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <style type="text/css">
-    body {
-        background-color: #f0f0f2;
-        margin: 0;
-        padding: 0;
-        font-family: "Open Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
-    }
-    div {
-        width: 600px;
-        margin: 5em auto;
-        padding: 50px;
-        background-color: #fff;
-        border-radius: 1em;
-    }
-    a:link, a:visited {
-        color: #38488f;
-        text-decoration: none;
-    }
-    @media (max-width: 700px) {
-        body {
-            background-color: #fff;
-        }
-        div {
-            width: auto;
-            margin: 0 auto;
-            border-radius: 0;
-            padding: 1em;
-        }
-    }
-    </style>
-</head>
-
-<body>
-<div>
-    <h1>Example Domain</h1>
-    <p>This domain is established to be used for illustrative examples in documents. You may use this
-    domain in examples without prior coordination or asking for permission.</p>
-    <p><a href="http://www.iana.org/domains/example">More information...</a></p>
-</div>
-</body>
-</html>
-)http";
+constexpr char kMsgTerminater[] = "\r\n";
 
 }  // namespace
 
@@ -81,7 +22,8 @@ RequestHandler::RequestHandler(Thttpd* thttpd, TaskRunner* task_runner, int fd)
     : thttpd_(thttpd), task_runner_(task_runner), fd_(fd) {}
 
 void RequestHandler::HandleUpdate(bool can_read, bool can_write) {
-  if (can_read) {
+  // If we don't have a file open, we're still waiting for the request.
+  if (!current_file_ && can_read) {
     while (true) {
       char buf[BUFSIZ];
       ssize_t ret = recv(fd_, buf, sizeof(buf) - 1, /*flags=*/0);
@@ -106,7 +48,42 @@ void RequestHandler::HandleUpdate(bool can_read, bool can_write) {
           break;
         case RequestParser::State::kReady: {
           HttpRequest request = request_parser_.GetRequestAndReset();
-          LOG(INFO) << "Got request:\n" << request;
+          VLOG(2) << "Got request:\n" << request;
+          if (request.method != HttpRequest::Method::kGet) {
+            VLOG(1) << "Unsupported method: " << request.method;
+            // TODO(bcf): Send 400 error.
+            break;
+          }
+
+          const std::string& served_path = thttpd_->config().path_to_serve;
+
+          std::string request_file_path = served_path + request.target;
+          auto path_or = util::CanonicalizePath(request_file_path);
+          if (!path_or.ok()) {
+            VLOG(1) << path_or.err();
+            // TODO(bcf): Send 400 error.
+            break;
+          }
+          request_file_path = std::move(*path_or);
+          if (request_file_path.compare(0, served_path.size(), served_path) !=
+              0) {
+            VLOG(1) << "Requested file not inside of path_to_serve: "
+                    << request_file_path;
+            // TODO(bcf): Send 400 error.
+            break;
+          }
+          auto file_or = FileReader::Create(request_file_path);
+          if (!file_or.ok()) {
+            VLOG(1) << "Requested file not found: " << request_file_path;
+            // TODO(bcf): Send 404 error.
+            break;
+          }
+          current_file_ = std::move(*file_or);
+          auto read_result = ReadFile();
+          if (!read_result.ok()) {
+            VLOG(1) << read_result.err();
+            // TODO(bcf): Send 500 error.
+          }
         } break;
         default:
           break;
@@ -114,11 +91,48 @@ void RequestHandler::HandleUpdate(bool can_read, bool can_write) {
     }
   }
 
-  if (can_write) {
-    if (send(fd_, kResponse, strlen(kResponse), MSG_NOSIGNAL | MSG_DONTWAIT) <
-        0) {
-      LOG(ERR) << "send failed: " << strerror(errno);
-      return;
+  if (current_file_ && can_write) {
+    // TODO(bcf): Send header and footer.
+    while (true) {
+      // Check if we're done sending the file.
+      if (current_file_->eof() && file_buf_offset_ == file_buf_bytes_) {
+        current_file_.reset();
+        return;
+      }
+      size_t remain_bytes = file_buf_bytes_ - file_buf_offset_;
+      LOG(ERR) << "Sending " << remain_bytes;
+      ssize_t sent = send(fd_, file_buf_ + file_buf_offset_, remain_bytes,
+                          MSG_NOSIGNAL | MSG_DONTWAIT);
+      if (sent < 0) {
+        LOG(ERR) << "send failed: " << strerror(errno);
+        return;
+      }
+      file_buf_offset_ += sent;
+
+      if (file_buf_offset_ == file_buf_bytes_) {
+        if (!current_file_->eof()) {
+          auto read_result = ReadFile();
+          if (!read_result.ok()) {
+            VLOG(1) << read_result.err();
+            // TODO(bcf): Send 500 error.
+          }
+        }
+      }
     }
   }
+}
+
+Result<void> RequestHandler::ReadFile() {
+  ABSL_ASSERT(current_file_);
+  ABSL_ASSERT(file_buf_offset_ == file_buf_bytes_);
+  auto num_read =
+      current_file_->Read(absl::MakeSpan(file_buf_, sizeof(file_buf_)));
+  if (!num_read.ok()) {
+    VLOG(1) << "Read failed: " << num_read.err();
+    return num_read.err();
+  }
+  file_buf_offset_ = 0;
+  file_buf_bytes_ = *num_read;
+
+  return {};
 }

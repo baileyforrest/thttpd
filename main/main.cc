@@ -5,6 +5,7 @@
 #include <limits>
 
 #include "base/logging.h"
+#include "base/util.h"
 #include "main/thttpd.h"
 
 int main(int argc, char** argv) {
@@ -36,11 +37,19 @@ int main(int argc, char** argv) {
     return EXIT_FAILURE;
   }
 
+  auto path_or = util::CanonicalizePath(path_to_serve);
+  if (!path_or.ok()) {
+    LOG(ERR) << path_or.err();
+    return EXIT_FAILURE;
+  }
+  path_to_serve = std::move(*path_or);
+
   // TODO(bcf): Add flag for this.
   gVerboseLogLevel = 4;
 
   Config config;
   config.port = port;
+  config.path_to_serve = path_to_serve;
 
   auto thttpd_or = Thttpd::Create(config);
   if (!thttpd_or.ok()) {

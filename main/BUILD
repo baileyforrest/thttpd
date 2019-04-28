@@ -6,6 +6,7 @@ cc_binary(
     deps = [
         ":libthttpd",
         "//base",
+        "//base:util",
     ],
 )
 
@@ -58,12 +59,15 @@ cc_library(
     ],
     deps = [
         ":config",
+        ":file-reader",
         ":request-parser",
         ":thread-pool",
         "//base",
         "//base:task-runner",
+        "//base:util",
         "@absl//absl/container:flat_hash_map",
         "@absl//absl/memory",
+        "@absl//absl/types:optional",
         "@absl//absl/types:span",
     ],
 )

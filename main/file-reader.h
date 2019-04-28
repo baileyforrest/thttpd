@@ -19,6 +19,8 @@ class FileReader {
   // Will have a short read on EOF.
   Result<size_t> Read(absl::Span<uint8_t> buf);
 
+  bool eof() const { return eof_; }
+
  private:
   // Use C file API because it's faster than C++ streams.
   using FilePtr = std::unique_ptr<FILE, decltype(&fclose)>;
@@ -27,6 +29,7 @@ class FileReader {
 
   std::string path_;
   FilePtr file_;
+  bool eof_ = false;
 };
 
 #endif  // MAIN_FILE_READER_H_

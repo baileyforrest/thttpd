@@ -22,8 +22,11 @@ FileReader::FileReader(std::string path, FilePtr file)
 
 Result<size_t> FileReader::Read(absl::Span<uint8_t> buf) {
   size_t amount = fread(buf.data(), /*size=*/1, buf.size(), file_.get());
-  if (amount != buf.size() && ferror(file_.get())) {
-    return BuildPosixErr(absl::StrCat("Read failed on ", path_));
+  if (amount != buf.size()) {
+    if (ferror(file_.get())) {
+      return BuildPosixErr(absl::StrCat("Read failed on ", path_));
+    }
+    eof_ = true;
   }
 
   return amount;

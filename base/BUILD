@@ -35,3 +35,18 @@ cc_library(
         "task-runner.h",
     ],
 )
+
+cc_library(
+    name = "util",
+    srcs = [
+        "util.cc",
+    ],
+    hdrs = [
+        "util.h",
+    ],
+    deps = [
+        ":base",
+        "@absl//absl/base",
+        "@absl//absl/strings",
+    ],
+)

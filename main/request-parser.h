@@ -5,7 +5,6 @@
 #include <utility>
 
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "main/http-request.h"
 
 // HTTP request parser. See https://tools.ietf.org/html/rfc7230

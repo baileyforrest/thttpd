@@ -20,7 +20,7 @@ class Thttpd {
   // Blocks.
   ABSL_MUST_USE_RESULT Result<void> Start();
 
-  const Config* config() const { return &config_; }
+  const Config& config() const { return config_; }
 
  private:
   explicit Thttpd(const Config& config);

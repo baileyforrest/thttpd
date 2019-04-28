@@ -3,7 +3,10 @@
 
 #include <string>
 
+#include "absl/types/optional.h"
+
 #include "base/task-runner.h"
+#include "main/file-reader.h"
 #include "main/request-parser.h"
 
 class Thttpd;
@@ -20,11 +23,16 @@ class RequestHandler {
   int fd() const { return fd_; }
 
  private:
-  void CloseSocket();
+  Result<void> ReadFile();
 
   Thttpd* const thttpd_;
   TaskRunner* const task_runner_;
   const int fd_;
+
+  absl::optional<FileReader> current_file_;
+  uint8_t file_buf_[BUFSIZ];
+  size_t file_buf_offset_ = 0;
+  size_t file_buf_bytes_ = 0;
 
   RequestParser request_parser_;
 };
