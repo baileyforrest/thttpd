@@ -20,6 +20,9 @@ int main(int argc, char** argv) {
     return EXIT_FAILURE;
   }
 
+  // TODO(bcf): Add flag for this.
+  gVerboseLogLevel = 4;
+
   Thttpd::Config config;
   config.port = port;
 

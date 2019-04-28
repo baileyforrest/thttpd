@@ -2,7 +2,9 @@
 #define MAIN_REQUEST_HANDLER_
 
 #include <string>
+
 #include "base/task-runner.h"
+#include "main/request-parser.h"
 
 class RequestHandler {
  public:
@@ -22,7 +24,7 @@ class RequestHandler {
   TaskRunner* const task_runner_;
   const int fd_;
 
-  std::string full_request_;
+  RequestParser request_parser_;
 };
 
 #endif  // MAIN_REQUEST_HANDLER_

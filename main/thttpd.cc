@@ -170,7 +170,7 @@ void Thttpd::AcceptNewClient(int listen_fd, int epoll_fd) {
       LOG(WARN) << "inet_ntop failed: " << strerror(errno);
     } else {
       addr_str[sizeof(addr_str) - 1] = '\0';
-      LOG(INFO) << "Connection from: " << addr_str;
+      VLOG(2) << "Connection from: " << addr_str;
     }
   }
 }

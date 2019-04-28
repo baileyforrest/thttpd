@@ -93,8 +93,19 @@ void RequestHandler::HandleUpdate(bool can_read, bool can_write) {
         LOG(ERR) << "Unexpected empty read";
         return;
       }
-      buf[ret] = '\0';
-      LOG(INFO) << "Got request:\n " << buf;
+
+      auto state = request_parser_.AddData({buf, static_cast<size_t>(ret)});
+      switch (state) {
+        case RequestParser::State::kInvalid:
+          VLOG(1) << "Parsing request failed";
+          break;
+        case RequestParser::State::kReady: {
+          HttpRequest request = request_parser_.GetRequestAndReset();
+          LOG(INFO) << "Got request:\n" << request;
+        } break;
+        default:
+          break;
+      }
     }
   }
 

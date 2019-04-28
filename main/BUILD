@@ -10,6 +10,21 @@ cc_binary(
 )
 
 cc_library(
+    name = "http-request",
+    srcs = [
+        "http-request.cc",
+    ],
+    hdrs = [
+        "http-request.h",
+    ],
+    deps = [
+        "//base",
+        "@absl//absl/base",
+        "@absl//absl/container:flat_hash_map",
+    ],
+)
+
+cc_library(
     name = "libthttpd",
     srcs = [
         "thttpd.cc",
@@ -36,9 +51,25 @@ cc_library(
         "request-handler.h",
     ],
     deps = [
+        ":request-parser",
         "//base",
         "//base:task-runner",
         "@absl//absl/memory",
+    ],
+)
+
+cc_library(
+    name = "request-parser",
+    srcs = [
+        "request-parser.cc",
+    ],
+    hdrs = [
+        "request-parser.h",
+    ],
+    deps = [
+        ":http-request",
+        "//base",
+        "@absl//absl/strings",
     ],
 )
 
