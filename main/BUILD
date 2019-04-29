@@ -18,6 +18,20 @@ cc_library(
 )
 
 cc_library(
+    name = "content-type",
+    srcs = [
+        "content-type.cc",
+    ],
+    hdrs = [
+        "content-type.h",
+    ],
+    deps = [
+        "@absl//absl/container:flat_hash_map",
+        "@absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "file-reader",
     srcs = [
         "file-reader.cc",
@@ -43,7 +57,22 @@ cc_library(
     deps = [
         "//base",
         "@absl//absl/base",
-        "@absl//absl/container:flat_hash_map",
+        "@absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "http-response",
+    srcs = [
+        "http-response.cc",
+    ],
+    hdrs = [
+        "http-response.h",
+    ],
+    deps = [
+        "//base",
+        "@absl//absl/base",
+        "@absl//absl/strings",
     ],
 )
 
@@ -59,7 +88,9 @@ cc_library(
     ],
     deps = [
         ":config",
+        ":content-type",
         ":file-reader",
+        ":http-response",
         ":request-parser",
         ":thread-pool",
         "//base",

@@ -2,9 +2,10 @@
 #define MAIN_HTTP_REQUEST_H_
 
 #include <iostream>
+#include <map>
 #include <string>
 
-#include "absl/container/flat_hash_map.h"
+#include "absl/strings/string_view.h"
 
 struct HttpRequest {
   enum class Method {
@@ -19,7 +20,7 @@ struct HttpRequest {
   Method method = Method::kInvalid;
   std::string target;
   std::string version;
-  absl::flat_hash_map<std::string, std::string> header_to_value_;
+  std::map<std::string, std::string> header_to_value_;
 };
 
 std::ostream& operator<<(std::ostream& os, HttpRequest::Method method);

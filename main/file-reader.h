@@ -17,18 +17,20 @@ class FileReader {
   FileReader& operator=(FileReader&&) = default;
 
   // Will have a short read on EOF.
-  Result<size_t> Read(absl::Span<uint8_t> buf);
+  Result<size_t> Read(absl::Span<char> buf);
 
   bool eof() const { return eof_; }
+  size_t size() const { return size_; }
 
  private:
   // Use C file API because it's faster than C++ streams.
   using FilePtr = std::unique_ptr<FILE, decltype(&fclose)>;
 
-  FileReader(std::string path, FilePtr file);
+  FileReader(std::string path, FilePtr file, size_t size);
 
   std::string path_;
   FilePtr file_;
+  size_t size_ = 0;
   bool eof_ = false;
 };
 

@@ -23,16 +23,38 @@ class RequestHandler {
   int fd() const { return fd_; }
 
  private:
-  Result<void> ReadFile();
+  enum class State {
+    kPendingRequest,
+    kSendingResponseHeader,
+    kSendingResponseBody,
+    kSendingResponseFooter,
+  };
+
+  // Attempt to write bytes to |fd_| from |source|. Assumes that
+  // |tx_buf_offset_| is the offset into |source| to write from and
+  // |tx_buf_bytes_| is the total number of bytes in |source|.
+  // Returns number of bytes written.
+  // Returns 0 if no more bytes can be written right now.
+  // Returns an error if an error happened.
+  Result<size_t> WriteBytes(const char* source);
+
+  State HandlePendingRequest(bool can_read);
+  State HandleSendingResponseHeader(bool can_write);
+  State HandleSendingResponseBody(bool can_write);
+  State HandleSendingResponseFooter(bool can_write);
 
   Thttpd* const thttpd_;
   TaskRunner* const task_runner_;
   const int fd_;
 
+  State state_ = State::kPendingRequest;
+
+  std::string current_response_header_;
+
   absl::optional<FileReader> current_file_;
-  uint8_t file_buf_[BUFSIZ];
-  size_t file_buf_offset_ = 0;
-  size_t file_buf_bytes_ = 0;
+  char tx_buf_[BUFSIZ];
+  size_t tx_buf_offset_ = 0;
+  size_t tx_buf_bytes_ = 0;
 
   RequestParser request_parser_;
 };

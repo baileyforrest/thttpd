@@ -42,15 +42,8 @@ std::ostream& operator<<(std::ostream& os, const HttpRequest& request) {
   os << request.method << " " << request.target << " " << request.version
      << "\n";
 
-  std::vector<std::string> headers;
-  headers.reserve(request.header_to_value_.size());
   for (const auto& item : request.header_to_value_) {
-    headers.push_back(item.first);
-  }
-
-  std::sort(headers.begin(), headers.end());
-  for (const auto& header : headers) {
-    os << header << ":" << request.header_to_value_.at(header) << "\n";
+    os << item.first << ":" << item.second << "\n";
   }
 
   return os;
