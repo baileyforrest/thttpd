@@ -106,22 +106,25 @@ Result<void> Thttpd::Start() {
         LOG(ERR) << "Unknown socket!";
         continue;
       }
+      std::shared_ptr<RequestHandler>& request_handler = it->second;
 
       bool can_read = event.events & EPOLLIN;
       bool can_write = event.events & EPOLLOUT;
 
       // Check if the socket was closed.
+      // TODO(bcf): This should be handled inside of RequestHandler, which
+      // should send an event back to here.
       if (can_read) {
         char byte;
         ssize_t avail = recv(fd, &byte, sizeof(byte), MSG_PEEK);
         if (avail == 0) {
-          conn_fd_to_handler_.erase(fd);
+          VLOG(2) << "Disconnected: " << request_handler->client_ip();
+          conn_fd_to_handler_.erase(it);
           close(fd);
           continue;
         }
       }
 
-      std::shared_ptr<RequestHandler>& request_handler = it->second;
       request_handler->task_runner()->PostTask(
           [request_handler, can_read, can_write] {
             request_handler->HandleUpdate(can_read, can_write);
@@ -151,24 +154,22 @@ void Thttpd::AcceptNewClient(int listen_fd, int epoll_fd) {
     return;
   }
 
+  char addr_str[INET6_ADDRSTRLEN];
+  void* in_addr = nullptr;
+  if (remote_addr.ss_family == AF_INET) {
+    in_addr = &(reinterpret_cast<sockaddr_in*>(&remote_addr)->sin_addr);
+  } else {
+    in_addr = &(reinterpret_cast<sockaddr_in6*>(&remote_addr)->sin6_addr);
+  }
+  if (inet_ntop(remote_addr.ss_family, in_addr, addr_str, sizeof(addr_str)) ==
+      nullptr) {
+    LOG(WARN) << "inet_ntop failed: " << strerror(errno);
+  } else {
+    addr_str[sizeof(addr_str) - 1] = '\0';
+    VLOG(2) << "Connection from: " << addr_str;
+  }
+
   conn_fd_to_handler_.emplace(
       conn_sock, std::make_shared<RequestHandler>(
-                     this, thread_pool_.GetNextRunner(), conn_sock));
-
-  if (config_.verbosity >= 1) {
-    char addr_str[INET6_ADDRSTRLEN];
-    void* in_addr = nullptr;
-    if (remote_addr.ss_family == AF_INET) {
-      in_addr = &(reinterpret_cast<sockaddr_in*>(&remote_addr)->sin_addr);
-    } else {
-      in_addr = &(reinterpret_cast<sockaddr_in6*>(&remote_addr)->sin6_addr);
-    }
-    if (inet_ntop(remote_addr.ss_family, in_addr, addr_str, sizeof(addr_str)) ==
-        nullptr) {
-      LOG(WARN) << "inet_ntop failed: " << strerror(errno);
-    } else {
-      addr_str[sizeof(addr_str) - 1] = '\0';
-      VLOG(2) << "Connection from: " << addr_str;
-    }
-  }
+                     addr_str, this, thread_pool_.GetNextRunner(), conn_sock));
 }

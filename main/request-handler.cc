@@ -3,6 +3,7 @@
 #include <errno.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
 
@@ -17,12 +18,17 @@
 
 namespace {
 
+constexpr char kIndexHtml[] = "/index.html";
 constexpr char kMsgTerminater[] = "\r\n";
 
 }  // namespace
 
-RequestHandler::RequestHandler(Thttpd* thttpd, TaskRunner* task_runner, int fd)
-    : thttpd_(thttpd), task_runner_(task_runner), fd_(fd) {}
+RequestHandler::RequestHandler(absl::string_view client_ip, Thttpd* thttpd,
+                               TaskRunner* task_runner, int fd)
+    : client_ip_(client_ip),
+      thttpd_(thttpd),
+      task_runner_(task_runner),
+      fd_(fd) {}
 
 void RequestHandler::HandleUpdate(bool can_read, bool can_write) {
   while (true) {
@@ -119,10 +125,23 @@ RequestHandler::State RequestHandler::HandlePendingRequest(bool can_read) {
       // TODO(bcf): Send 400 error.
       return State::kPendingRequest;
     }
+
+    struct stat stat_buf;
+    if (stat(request_file_path.c_str(), &stat_buf) < 0) {
+      VLOG(1) << "Failed to stat " << request_file_path << ": "
+              << strerror(errno);
+      // TODO(bcf): Send 404 error.
+      return State::kPendingRequest;
+    }
+
+    if (S_ISDIR(stat_buf.st_mode)) {
+      request_file_path += kIndexHtml;
+    }
+
     auto file_or = FileReader::Create(request_file_path);
     if (!file_or.ok()) {
       VLOG(1) << "Requested file not found: " << request_file_path;
-      // TODO(bcf): Send 404 error.
+      // TODO(bcf): Send 400 error.
       return State::kPendingRequest;
     }
 

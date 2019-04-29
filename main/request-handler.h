@@ -3,6 +3,7 @@
 
 #include <string>
 
+#include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 
 #include "base/task-runner.h"
@@ -13,12 +14,14 @@ class Thttpd;
 
 class RequestHandler {
  public:
-  RequestHandler(Thttpd* thttpd, TaskRunner* task_runner, int fd);
+  RequestHandler(absl::string_view client_ip, Thttpd* thttpd,
+                 TaskRunner* task_runner, int fd);
   RequestHandler(const RequestHandler&) = delete;
   RequestHandler operator=(const RequestHandler&) = delete;
 
   void HandleUpdate(bool can_read, bool can_write);
 
+  const std::string client_ip() const { return client_ip_; }
   TaskRunner* task_runner() const { return task_runner_; }
   int fd() const { return fd_; }
 
@@ -43,6 +46,7 @@ class RequestHandler {
   State HandleSendingResponseBody(bool can_write);
   State HandleSendingResponseFooter(bool can_write);
 
+  const std::string client_ip_;
   Thttpd* const thttpd_;
   TaskRunner* const task_runner_;
   const int fd_;
