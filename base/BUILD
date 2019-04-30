@@ -27,6 +27,28 @@ cc_test(
 )
 
 cc_library(
+    name = "mpsc-queue",
+    hdrs = [
+        "mpsc-queue.h",
+    ],
+    deps = [
+        "@absl//absl/base",
+        "@absl//absl/synchronization",
+    ],
+)
+
+cc_test(
+    name = "mpsc-queue_test",
+    srcs = [
+        "mpsc-queue_test.cc",
+    ],
+    deps = [
+        ":mpsc-queue",
+        "@gtest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "task-runner",
     srcs = [
         "task-runner.cc",
