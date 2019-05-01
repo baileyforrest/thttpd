@@ -53,8 +53,8 @@ void RequestHandler::HandleUpdate(bool can_read, bool can_write) {
   }
 }
 
-Result<size_t> RequestHandler::WriteBytes(const char* source) {
-  size_t remain_bytes = tx_buf_bytes_ - tx_buf_offset_;
+Result<bool> RequestHandler::WriteBytes(const char* source) {
+  ssize_t remain_bytes = tx_buf_bytes_ - tx_buf_offset_;
   ssize_t sent = send(*fd_, source + tx_buf_offset_, remain_bytes,
                       MSG_NOSIGNAL | MSG_DONTWAIT);
   if (sent < 0) {
@@ -65,11 +65,10 @@ Result<size_t> RequestHandler::WriteBytes(const char* source) {
     return BuildPosixErr("send failed");
   }
   tx_buf_offset_ += sent;
-  return sent;
+  return sent == remain_bytes;
 }
 
 RequestHandler::State RequestHandler::HandlePendingRequest(bool can_read) {
-  VLOG(3) << __func__ << " " << can_read;
   if (!can_read) {
     return state_;
   }
@@ -174,7 +173,6 @@ RequestHandler::State RequestHandler::HandlePendingRequest(bool can_read) {
 
 RequestHandler::State RequestHandler::HandleSendingResponseHeader(
     bool can_write) {
-  VLOG(3) << __func__ << " " << can_write;
   if (!can_write) {
     return state_;
   }
@@ -188,7 +186,7 @@ RequestHandler::State RequestHandler::HandleSendingResponseHeader(
       return State::kPendingRequest;
     }
 
-    if (*send_result == 0) {
+    if (!*send_result) {
       return state_;
     }
   }
@@ -201,12 +199,11 @@ RequestHandler::State RequestHandler::HandleSendingResponseHeader(
 
 RequestHandler::State RequestHandler::HandleSendingResponseBody(
     bool can_write) {
-  VLOG(3) << __func__ << " " << can_write;
   if (!can_write) {
     return state_;
   }
 
-  while (!current_file_->eof() && tx_buf_offset_ == tx_buf_bytes_) {
+  while (!current_file_->eof() || tx_buf_offset_ < tx_buf_bytes_) {
     // Read the next chunk of the file.
     if (tx_buf_offset_ == tx_buf_bytes_) {
       auto num_read =
@@ -227,7 +224,7 @@ RequestHandler::State RequestHandler::HandleSendingResponseBody(
       return State::kPendingRequest;
     }
 
-    if (*send_result == 0) {
+    if (!*send_result) {
       return state_;
     }
   }

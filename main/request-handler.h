@@ -36,10 +36,9 @@ class RequestHandler {
   // Attempt to write bytes to |fd_| from |source|. Assumes that
   // |tx_buf_offset_| is the offset into |source| to write from and
   // |tx_buf_bytes_| is the total number of bytes in |source|.
-  // Returns number of bytes written.
-  // Returns 0 if no more bytes can be written right now.
+  // Returns true if all bytes were written.
   // Returns an error if an error happened.
-  Result<size_t> WriteBytes(const char* source);
+  Result<bool> WriteBytes(const char* source);
 
   State HandlePendingRequest(bool can_read);
   State HandleSendingResponseHeader(bool can_write);
