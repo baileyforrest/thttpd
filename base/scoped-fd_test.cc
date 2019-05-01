@@ -20,7 +20,7 @@ TEST(ScopedFdTest, Destructor) {
   ASSERT_TRUE(IsValidFd(fd));
   {
     ScopedFd sfd(fd);
-    EXPECT_EQ(fd, sfd.get());
+    EXPECT_EQ(fd, *sfd);
   }
   ASSERT_FALSE(IsValidFd(fd));
 }
@@ -31,9 +31,9 @@ TEST(ScopedFdTest, MoveConstructor) {
   std::unique_ptr<ScopedFd> outer;
   {
     ScopedFd sfd(fd);
-    EXPECT_EQ(fd, sfd.get());
+    EXPECT_EQ(fd, *sfd);
     outer = absl::make_unique<ScopedFd>(std::move(sfd));
-    EXPECT_EQ(-1, sfd.get());
+    EXPECT_EQ(-1, *sfd);
   }
   ASSERT_TRUE(IsValidFd(fd));
   outer.reset();
@@ -51,12 +51,27 @@ TEST(ScopedFdTest, MoveAssign) {
 
   {
     ScopedFd sfd(fd2);
-    EXPECT_EQ(fd2, sfd.get());
+    EXPECT_EQ(fd2, *sfd);
     *outer = std::move(sfd);
-    EXPECT_EQ(-1, sfd.get());
+    EXPECT_EQ(-1, *sfd);
     EXPECT_FALSE(IsValidFd(fd1));
     EXPECT_TRUE(IsValidFd(fd2));
   }
   outer.reset();
   ASSERT_FALSE(IsValidFd(fd2));
+}
+
+TEST(ScopedFdTest, Operators) {
+  int fd = CreateFd();
+  ASSERT_TRUE(IsValidFd(fd));
+
+  ScopedFd sfd;
+  EXPECT_FALSE(sfd);
+
+  sfd = ScopedFd(fd);
+  EXPECT_TRUE(sfd);
+  EXPECT_EQ(fd, *sfd);
+
+  sfd.reset();
+  EXPECT_FALSE(sfd);
 }

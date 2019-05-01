@@ -24,13 +24,16 @@ constexpr char kMsgTerminater[] = "\r\n";
 }  // namespace
 
 RequestHandler::RequestHandler(absl::string_view client_ip, Thttpd* thttpd,
-                               TaskRunner* task_runner, int fd)
+                               TaskRunner* task_runner, ScopedFd fd)
     : client_ip_(client_ip),
       thttpd_(thttpd),
       task_runner_(task_runner),
-      fd_(fd) {}
+      fd_(std::move(fd)) {}
 
 void RequestHandler::HandleUpdate(bool can_read, bool can_write) {
+  if (socket_closed_) {
+    return;
+  }
   while (true) {
     State old_state = state_;
     switch (state_) {
@@ -43,9 +46,6 @@ void RequestHandler::HandleUpdate(bool can_read, bool can_write) {
       case State::kSendingResponseBody:
         state_ = HandleSendingResponseBody(can_write);
         break;
-      case State::kSendingResponseFooter:
-        state_ = HandleSendingResponseFooter(can_write);
-        break;
     }
     if (state_ == old_state) {
       break;
@@ -55,7 +55,7 @@ void RequestHandler::HandleUpdate(bool can_read, bool can_write) {
 
 Result<size_t> RequestHandler::WriteBytes(const char* source) {
   size_t remain_bytes = tx_buf_bytes_ - tx_buf_offset_;
-  ssize_t sent = send(fd_, source + tx_buf_offset_, remain_bytes,
+  ssize_t sent = send(*fd_, source + tx_buf_offset_, remain_bytes,
                       MSG_NOSIGNAL | MSG_DONTWAIT);
   if (sent < 0) {
     if (errno == EAGAIN || errno == EWOULDBLOCK) {
@@ -75,17 +75,19 @@ RequestHandler::State RequestHandler::HandlePendingRequest(bool can_read) {
   }
   while (true) {
     char buf[BUFSIZ];
-    ssize_t ret = recv(fd_, buf, sizeof(buf) - 1, /*flags=*/0);
-    if (ret < 0) {
+    ssize_t ret = recv(*fd_, buf, sizeof(buf) - 1, /*flags=*/0);
+    bool failed = ret < 0;
+    if (failed) {
       if (errno == EAGAIN || errno == EWOULDBLOCK) {
         return State::kPendingRequest;
       }
       LOG(ERR) << "recv failed: " << strerror(errno);
-      return State::kPendingRequest;
     }
-    // Socket close logic should be handled before receiving the request.
-    if (ret == 0) {
-      LOG(ERR) << "Unexpected empty read";
+
+    // Socket was closed.
+    if (failed || ret == 0) {
+      socket_closed_ = true;
+      thttpd_->NotifySocketClosed(*fd_);
       return State::kPendingRequest;
     }
 
@@ -218,34 +220,6 @@ RequestHandler::State RequestHandler::HandleSendingResponseBody(
       tx_buf_bytes_ = *num_read;
     }
 
-    auto send_result = WriteBytes(tx_buf_);
-    if (!send_result.ok()) {
-      LOG(ERR) << send_result.err();
-      // TODO(bcf): Send 500 error.
-      return State::kPendingRequest;
-    }
-
-    if (*send_result == 0) {
-      return state_;
-    }
-  }
-
-  // Set up state for next state.
-  memcpy(tx_buf_, kMsgTerminater, sizeof(kMsgTerminater));
-  tx_buf_offset_ = 0;
-  tx_buf_bytes_ = strlen(kMsgTerminater);
-
-  return State::kSendingResponseFooter;
-}
-
-RequestHandler::State RequestHandler::HandleSendingResponseFooter(
-    bool can_write) {
-  VLOG(3) << __func__ << " " << can_write;
-  if (!can_write) {
-    return state_;
-  }
-
-  while (tx_buf_offset_ < tx_buf_bytes_) {
     auto send_result = WriteBytes(tx_buf_);
     if (!send_result.ok()) {
       LOG(ERR) << send_result.err();

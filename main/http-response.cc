@@ -63,6 +63,7 @@ HttpResponse HttpResponse::BuildWithDefaultHeaders(
   }
 
   result.header_to_value_.emplace("Server", kServerName);
+  result.header_to_value_.emplace("Connection", "keep-alive");
 
   for (const auto& item : additional_headers) {
     result.header_to_value_[item.first] = item.second;

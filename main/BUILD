@@ -94,6 +94,7 @@ cc_library(
         ":request-parser",
         ":thread-pool",
         "//base",
+        "//base:scoped-fd",
         "//base:task-runner",
         "//base:util",
         "@absl//absl/container:flat_hash_map",

@@ -6,6 +6,7 @@
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 
+#include "base/scoped-fd.h"
 #include "base/task-runner.h"
 #include "main/file-reader.h"
 #include "main/request-parser.h"
@@ -15,7 +16,7 @@ class Thttpd;
 class RequestHandler {
  public:
   RequestHandler(absl::string_view client_ip, Thttpd* thttpd,
-                 TaskRunner* task_runner, int fd);
+                 TaskRunner* task_runner, ScopedFd fd);
   RequestHandler(const RequestHandler&) = delete;
   RequestHandler operator=(const RequestHandler&) = delete;
 
@@ -23,14 +24,13 @@ class RequestHandler {
 
   const std::string client_ip() const { return client_ip_; }
   TaskRunner* task_runner() const { return task_runner_; }
-  int fd() const { return fd_; }
+  int fd() const { return *fd_; }
 
  private:
   enum class State {
     kPendingRequest,
     kSendingResponseHeader,
     kSendingResponseBody,
-    kSendingResponseFooter,
   };
 
   // Attempt to write bytes to |fd_| from |source|. Assumes that
@@ -44,12 +44,12 @@ class RequestHandler {
   State HandlePendingRequest(bool can_read);
   State HandleSendingResponseHeader(bool can_write);
   State HandleSendingResponseBody(bool can_write);
-  State HandleSendingResponseFooter(bool can_write);
 
   const std::string client_ip_;
   Thttpd* const thttpd_;
   TaskRunner* const task_runner_;
-  const int fd_;
+  const ScopedFd fd_;
+  bool socket_closed_ = false;
 
   State state_ = State::kPendingRequest;
 

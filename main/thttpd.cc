@@ -1,6 +1,7 @@
 #include "main/thttpd.h"
 
 #include <arpa/inet.h>
+#include <fcntl.h>
 #include <netdb.h>
 #include <netinet/in.h>
 #include <sys/epoll.h>
@@ -11,12 +12,15 @@
 #include <array>
 #include <cstdint>
 #include <cstdlib>
+#include <string>
+#include <utility>
 
 #include "absl/base/macros.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/numbers.h"
 #include "absl/types/span.h"
 #include "base/logging.h"
+#include "base/scoped-fd.h"
 
 namespace {
 
@@ -44,112 +48,132 @@ Thttpd::Thttpd(const Config& config)
     : config_(config), thread_pool_(config.num_worker_threads) {}
 
 Result<void> Thttpd::Start() {
-  int listen_fd = socket(PF_INET6, SOCK_STREAM | SOCK_NONBLOCK, /*protocol=*/0);
-  if (listen_fd < 0) {
+  ScopedFd listen_fd(
+      socket(PF_INET6, SOCK_STREAM | SOCK_NONBLOCK, /*protocol=*/0));
+  if (*listen_fd < 0) {
     return BuildPosixErr("socket failed");
   }
 
   {
     int opt = 1;
-    if (setsockopt(listen_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) <
+    if (setsockopt(*listen_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) <
         0) {
       return BuildPosixErr("socksockopt failed");
     }
   }
 
-  sockaddr_in6 addr = {
-      .sin6_family = AF_INET6, .sin6_port = htons(config_.port),
-  };
-  addr.sin6_addr = in6addr_any;
-  if (bind(listen_fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0) {
-    return BuildPosixErr("bind failed");
+  {
+    sockaddr_in6 addr = {
+        .sin6_family = AF_INET6, .sin6_port = htons(config_.port),
+    };
+    addr.sin6_addr = in6addr_any;
+    if (bind(*listen_fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) <
+        0) {
+      return BuildPosixErr("bind failed");
+    }
+
+    if (listen(*listen_fd, kListenBacklog) < 0) {
+      return BuildPosixErr("listen failed");
+    }
   }
 
-  if (listen(listen_fd, kListenBacklog) < 0) {
-    return BuildPosixErr("listen failed");
-  }
-
-  LOG(INFO) << "Listening on port " << config_.port;
-
-  int epoll_fd = epoll_create1(/*flags=*/0);
-  if (epoll_fd < 0) {
+  ScopedFd epoll_fd(epoll_create1(/*flags=*/0));
+  if (*epoll_fd < 0) {
     return BuildPosixErr("epoll_create1 failed");
   }
 
-  epoll_event event{
-      .events = EPOLLIN,
-  };
-  event.data.fd = listen_fd;
-  if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, listen_fd, &event) < 0) {
-    return BuildPosixErr("epoll_ctl on listen_fd failed");
+  {
+    epoll_event event{
+        .events = EPOLLIN,
+    };
+    event.data.fd = *listen_fd;
+    if (epoll_ctl(*epoll_fd, EPOLL_CTL_ADD, *listen_fd, &event) < 0) {
+      return BuildPosixErr("epoll_ctl on listen_fd failed");
+    }
+  }
+
+  int pipe_fds[2];
+  if (pipe(pipe_fds) < 0) {
+    return BuildPosixErr("pipe failed");
+  }
+  ScopedFd event_read_fd = ScopedFd(pipe_fds[0]);
+  event_write_fd_ = ScopedFd(pipe_fds[1]);
+
+  {
+    // Set event_read_fd as nonblocking.
+    int flags = fcntl(*event_read_fd, F_GETFL, 0);
+    if (flags < 0) {
+      return BuildPosixErr("fcntl(F_GETFL) on event_read_fd failed");
+    }
+    flags |= O_NONBLOCK;
+    if (fcntl(*event_read_fd, F_SETFL, flags) < 0) {
+      return BuildPosixErr("fcntl(F_SETFL) on event_read_fd failed");
+    }
+
+    // Add epoll event for event_read_fd.
+    epoll_event event{
+        .events = EPOLLIN,
+    };
+    event.data.fd = *event_read_fd;
+    if (epoll_ctl(*epoll_fd, EPOLL_CTL_ADD, *event_read_fd, &event) < 0) {
+      return BuildPosixErr("epoll_ctl on event_read_fd failed");
+    }
   }
 
   const auto events = absl::make_unique<std::array<epoll_event, kMaxEvents>>();
 
+  LOG(INFO) << "Listening on port " << config_.port;
   while (true) {
     int num_fds =
-        epoll_wait(epoll_fd, events->data(), events->size(), /*timeout=*/-1);
+        epoll_wait(*epoll_fd, events->data(), events->size(), /*timeout=*/-1);
     if (num_fds < 0) {
       return BuildPosixErr("epoll_wait failed");
     }
 
     for (auto& event : absl::MakeSpan(events->data(), num_fds)) {
       int fd = event.data.fd;
-      if (fd == listen_fd) {
-        AcceptNewClient(listen_fd, epoll_fd);
-        continue;
+      if (fd == *listen_fd) {
+        AcceptNewClient(*listen_fd, *epoll_fd);
+      } else if (fd == *event_read_fd) {
+        HandleEvents(*event_read_fd);
+      } else {
+        HandleClient(fd, event.events);
       }
-
-      auto it = conn_fd_to_handler_.find(fd);
-      if (it == conn_fd_to_handler_.end()) {
-        close(fd);
-        LOG(ERR) << "Unknown socket!";
-        continue;
-      }
-      std::shared_ptr<RequestHandler>& request_handler = it->second;
-
-      bool can_read = event.events & EPOLLIN;
-      bool can_write = event.events & EPOLLOUT;
-
-      // Check if the socket was closed.
-      // TODO(bcf): This should be handled inside of RequestHandler, which
-      // should send an event back to here.
-      if (can_read) {
-        char byte;
-        ssize_t avail = recv(fd, &byte, sizeof(byte), MSG_PEEK);
-        if (avail == 0) {
-          VLOG(2) << "Disconnected: " << request_handler->client_ip();
-          conn_fd_to_handler_.erase(it);
-          close(fd);
-          continue;
-        }
-      }
-
-      request_handler->task_runner()->PostTask(
-          [request_handler, can_read, can_write] {
-            request_handler->HandleUpdate(can_read, can_write);
-          });
     }
   }
 
   return {};
 }
 
+void Thttpd::NotifySocketClosed(int fd) {
+  closed_fds_.Push(fd);
+  NotifyEvent(absl::StrCat("socket closed: ", fd));
+}
+
+void Thttpd::NotifyEvent(absl::string_view event) {
+  std::string str_event(event);
+  str_event.push_back('\n');
+  ssize_t ret = write(*event_write_fd_, str_event.data(), str_event.size());
+  if (ret != static_cast<ssize_t>(str_event.size())) {
+    LOG(ERR) << "Failed to write event: " << event;
+  }
+}
+
 void Thttpd::AcceptNewClient(int listen_fd, int epoll_fd) {
   sockaddr_storage remote_addr;
   socklen_t remote_addr_len = sizeof(remote_addr);
-  int conn_sock = accept4(listen_fd, reinterpret_cast<sockaddr*>(&remote_addr),
-                          &remote_addr_len, SOCK_NONBLOCK);
-  if (conn_sock < 0) {
+  ScopedFd conn_sock(accept4(listen_fd,
+                             reinterpret_cast<sockaddr*>(&remote_addr),
+                             &remote_addr_len, SOCK_NONBLOCK));
+  if (*conn_sock < 0) {
     LOG(ERR) << "accept failed : " << strerror(errno);
     return;
   }
   epoll_event new_event{
       .events = EPOLLIN | EPOLLOUT | EPOLLET,
   };
-  new_event.data.fd = conn_sock;
-  if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, conn_sock, &new_event) < 0) {
-    close(conn_sock);
+  new_event.data.fd = *conn_sock;
+  if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, *conn_sock, &new_event) < 0) {
     LOG(ERR) << "epoll_ctl on conn_sock failed failed : " << strerror(errno);
     return;
   }
@@ -169,7 +193,52 @@ void Thttpd::AcceptNewClient(int listen_fd, int epoll_fd) {
     VLOG(2) << "Connection from: " << addr_str;
   }
 
+  int raw_conn_sock = *conn_sock;
   conn_fd_to_handler_.emplace(
-      conn_sock, std::make_shared<RequestHandler>(
-                     addr_str, this, thread_pool_.GetNextRunner(), conn_sock));
+      raw_conn_sock,
+      std::make_shared<RequestHandler>(
+          addr_str, this, thread_pool_.GetNextRunner(), std::move(conn_sock)));
+}
+
+bool Thttpd::HandleEvents(int event_fd) {
+  char buf[BUFSIZ];
+  while (true) {
+    ssize_t ret = read(event_fd, buf, sizeof(buf));
+    if (ret < 0) {
+      if (errno != EAGAIN && errno != EWOULDBLOCK) {
+        LOG(ERR) << "Read event_fd failed: " << strerror(errno);
+      }
+      break;
+    }
+  }
+
+  while (!closed_fds_.Empty()) {
+    int fd = closed_fds_.Pop();
+    auto it = conn_fd_to_handler_.find(fd);
+    if (it == conn_fd_to_handler_.end()) {
+      LOG(ERR) << "Unknown socket!";
+      continue;
+    }
+
+    VLOG(2) << "Disconnected: " << it->second->client_ip();
+    conn_fd_to_handler_.erase(it);
+  }
+  return false;
+}
+
+void Thttpd::HandleClient(int fd, uint32_t epoll_events) {
+  auto it = conn_fd_to_handler_.find(fd);
+  if (it == conn_fd_to_handler_.end()) {
+    LOG(ERR) << "Unknown socket!";
+    return;
+  }
+  std::shared_ptr<RequestHandler>& request_handler = it->second;
+
+  bool can_read = epoll_events & EPOLLIN;
+  bool can_write = epoll_events & EPOLLOUT;
+
+  request_handler->task_runner()->PostTask(
+      [request_handler, can_read, can_write] {
+        request_handler->HandleUpdate(can_read, can_write);
+      });
 }
