@@ -49,6 +49,25 @@ cc_test(
 )
 
 cc_library(
+    name = "scoped-fd",
+    hdrs = [
+        "scoped-fd.h",
+    ],
+)
+
+cc_test(
+    name = "scoped-fd_test",
+    srcs = [
+        "scoped-fd_test.cc",
+    ],
+    deps = [
+        ":scoped-fd",
+        "@absl//absl/memory",
+        "@gtest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "task-runner",
     srcs = [
         "task-runner.cc",
