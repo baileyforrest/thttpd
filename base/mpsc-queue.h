@@ -24,10 +24,12 @@ class MpscQueue {
     }
   }
 
+  // Can only call from consumer thread.
   bool Empty() const {
     return head_->next.load(std::memory_order_acquire) == nullptr;
   }
 
+  // Can call from any thread.
   void Push(T val) {
     Node* node = new Node(std::move(val));
     absl::WriterMutexLock lock(&tail_lock_);
@@ -35,6 +37,7 @@ class MpscQueue {
     tail_ = node;
   }
 
+  // Can only call from consumer thread.
   T Pop() {
     ABSL_ASSERT(!Empty());
     Node* dummy = head_;
@@ -43,6 +46,31 @@ class MpscQueue {
     head_ = next;
     delete dummy;
     return ret;
+  }
+
+  // Returns true if not empty, otherwise the wait was canceled.
+  // Can only call from consumer thread.
+  bool WaitNotEmpty() {
+    absl::ReaderMutexLock lock(&tail_lock_);
+    uint64_t start_cancel_count = wait_empty_cancel_count_;
+
+    auto exit_cond = [&] {
+      tail_lock_.AssertReaderHeld();
+      if (start_cancel_count != wait_empty_cancel_count_) {
+        return true;
+      }
+
+      return !Empty();
+    };
+    tail_lock_.Await(absl::Condition(&exit_cond));
+
+    return !Empty();
+  }
+
+  // Can call from any thread.
+  void CancelWaitNotEmpty() {
+    absl::WriterMutexLock lock(&tail_lock_);
+    ++wait_empty_cancel_count_;
   }
 
  private:
@@ -59,6 +87,7 @@ class MpscQueue {
   };
 
   ABSL_CACHELINE_ALIGNED Node* head_ = nullptr;
+  uint64_t wait_empty_cancel_count_ GUARDED_BY(tail_lock_) = 0;
   ABSL_CACHELINE_ALIGNED Node* tail_ GUARDED_BY(tail_lock_) = nullptr;
   ABSL_CACHELINE_ALIGNED absl::Mutex tail_lock_;
 };

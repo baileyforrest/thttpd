@@ -1,3 +1,4 @@
+#include <chrono>
 #include <set>
 #include <thread>
 #include <vector>
@@ -60,4 +61,44 @@ TEST(MpscQueueTest, Mpsc) {
   for (auto& thread : threads) {
     thread.join();
   }
+}
+
+TEST(MpscQueueTest, WaitNotEmpty) {
+  constexpr int kMax = 1000;
+  MpscQueue<int> queue;
+  std::thread thread([&] {
+    for (int i = 0; i < kMax; ++i) {
+      queue.Push(i);
+
+      // Wait sometimes to introduce randomness to the timing.
+      if (i % 4 == 0) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+      }
+    }
+  });
+
+  for (int i = 0; i < kMax; ++i) {
+    EXPECT_TRUE(queue.WaitNotEmpty());
+    EXPECT_EQ(i, queue.Pop());
+  }
+
+  thread.join();
+}
+
+TEST(MpscQueueTest, CancelWaitNotEmpty) {
+  MpscQueue<int> queue;
+  std::thread thread([&] {
+    EXPECT_FALSE(queue.WaitNotEmpty());
+    EXPECT_TRUE(queue.WaitNotEmpty());
+    EXPECT_FALSE(queue.Empty());
+    EXPECT_EQ(42, queue.Pop());
+  });
+
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  queue.CancelWaitNotEmpty();
+
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  queue.Push(42);
+
+  thread.join();
 }

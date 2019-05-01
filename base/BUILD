@@ -56,6 +56,20 @@ cc_library(
     hdrs = [
         "task-runner.h",
     ],
+    deps = [
+        ":mpsc-queue",
+    ],
+)
+
+cc_test(
+    name = "task-runner_test",
+    srcs = [
+        "task-runner_test.cc",
+    ],
+    deps = [
+        ":task-runner",
+        "@gtest//:gtest_main",
+    ],
 )
 
 cc_library(
