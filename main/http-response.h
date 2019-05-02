@@ -5,6 +5,8 @@
 #include <map>
 #include <string>
 
+#include "base/err.h"
+
 // Http response header.
 // rfc7231
 struct HttpResponse {
@@ -18,6 +20,7 @@ struct HttpResponse {
   static const char* CodeToString(Code code);
   static HttpResponse BuildWithDefaultHeaders(
       Code code, const std::map<std::string, std::string>& additional_headers);
+  static Result<std::string> FormatTime(time_t time_val);
 
   Code code = Code::kInternalServerError;
   std::map<std::string, std::string> header_to_value_;

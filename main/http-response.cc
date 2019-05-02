@@ -4,7 +4,6 @@
 #include <utility>
 
 #include "absl/base/macros.h"
-#include "base/err.h"
 #include "base/logging.h"
 
 namespace {
@@ -12,22 +11,6 @@ namespace {
 constexpr char kVersion[] = "HTTP/1.1";
 constexpr char kNewline[] = "\r\n";
 constexpr char kServerName[] = "thttpd";
-
-Result<std::string> GetDateStringNow() {
-  time_t now = time(nullptr);
-  struct tm tm;
-  if (gmtime_r(&now, &tm) == nullptr) {
-    return Err("gmtime_r failed");
-  }
-
-  // TODO(bcf): Day of week and month name are loacle dependent, but meh.
-  char buf[256];
-  if (strftime(buf, sizeof(buf), "%a, %e %b %Y %H:%M:%S GMT", &tm) == 0) {
-    return Err("strftime failed");
-  }
-
-  return std::string(buf);
-}
 
 }  // namespace
 
@@ -55,11 +38,17 @@ HttpResponse HttpResponse::BuildWithDefaultHeaders(
   HttpResponse result;
   result.code = code;
 
-  auto date_str = GetDateStringNow();
-  if (!date_str.ok()) {
-    LOG(WARN) << "Failed to get date: " << date_str.err();
+  time_t now = time(nullptr);
+  bool time_valid = now != static_cast<time_t>(-1);
+  if (!time_valid) {
+    LOG(WARN) << "time failed: " << strerror(errno);
   } else {
-    result.header_to_value_.emplace("Date", std::move(*date_str));
+    auto date_str = FormatTime(now);
+    if (!date_str.ok()) {
+      LOG(WARN) << "Failed to get date: " << date_str.err();
+    } else {
+      result.header_to_value_.emplace("Date", std::move(*date_str));
+    }
   }
 
   result.header_to_value_.emplace("Server", kServerName);
@@ -70,6 +59,22 @@ HttpResponse HttpResponse::BuildWithDefaultHeaders(
   }
 
   return result;
+}
+
+// static
+Result<std::string> HttpResponse::FormatTime(time_t time_val) {
+  struct tm tm;
+  if (gmtime_r(&time_val, &tm) == nullptr) {
+    return Err("gmtime_r failed");
+  }
+
+  // TODO(bcf): Day of week and month name are loacle dependent, but meh.
+  char buf[256];
+  if (strftime(buf, sizeof(buf), "%a, %02e %b %Y %H:%M:%S GMT", &tm) == 0) {
+    return Err("strftime failed");
+  }
+
+  return std::string(buf);
 }
 
 std::ostream& operator<<(std::ostream& os, HttpResponse::Code code) {

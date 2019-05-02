@@ -151,6 +151,12 @@ RequestHandler::State RequestHandler::HandlePendingRequest(bool can_read) {
         {"Content-Type",
          std::string(ContentType::ForFilename(request_file_path))},
     };
+    auto modified_date = HttpResponse::FormatTime(stat_buf.st_mtime);
+    if (!modified_date.ok()) {
+      VLOG(1) << "Failed to generate Last-Modified";
+    } else {
+      headers.emplace("Last-Modified", std::move(*modified_date));
+    }
 
     auto response =
         HttpResponse::BuildWithDefaultHeaders(HttpResponse::Code::kOk, headers);

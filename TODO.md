@@ -1,2 +1,3 @@
 - README
 - Last-Modified
+- Compression
