@@ -1,4 +1,4 @@
-#include "main/file-reader.h"
+#include "base/file-reader.h"
 
 #include <utility>
 
@@ -28,7 +28,10 @@ Result<FileReader> FileReader::Create(absl::string_view path) {
 FileReader::FileReader(std::string path, FilePtr file, size_t size)
     : path_(std::move(path)), file_(std::move(file)), size_(size) {}
 
-Result<size_t> FileReader::Read(absl::Span<char> buf) {
+Result<ssize_t> FileReader::Read(absl::Span<char> buf) {
+  if (eof_) {
+    return -1;
+  }
   size_t amount = fread(buf.data(), /*size=*/1, buf.size(), file_.get());
   if (amount != buf.size()) {
     if (ferror(file_.get())) {

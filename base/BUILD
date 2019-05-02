@@ -27,6 +27,20 @@ cc_test(
 )
 
 cc_library(
+    name = "file-reader",
+    srcs = [
+        "file-reader.cc",
+    ],
+    hdrs = [
+        "file-reader.h",
+    ],
+    deps = [
+        ":base",
+        ":reader",
+    ],
+)
+
+cc_library(
     name = "mpsc-queue",
     hdrs = [
         "mpsc-queue.h",
@@ -45,6 +59,17 @@ cc_test(
     deps = [
         ":mpsc-queue",
         "@gtest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "reader",
+    hdrs = [
+        "reader.h",
+    ],
+    deps = [
+        ":base",
+        "@absl//absl/types:span",
     ],
 )
 

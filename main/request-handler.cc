@@ -209,7 +209,7 @@ RequestHandler::State RequestHandler::HandleSendingResponseBody(
     return state_;
   }
 
-  while (!current_file_->eof() || tx_buf_offset_ < tx_buf_bytes_) {
+  while (true) {
     // Read the next chunk of the file.
     if (tx_buf_offset_ == tx_buf_bytes_) {
       auto num_read =
@@ -218,6 +218,9 @@ RequestHandler::State RequestHandler::HandleSendingResponseBody(
         VLOG(1) << "Read failed: " << num_read.err();
         // TODO(bcf): Send 500
         return State::kPendingRequest;
+      }
+      if (*num_read == -1) {  // EOF
+        break;
       }
       tx_buf_offset_ = 0;
       tx_buf_bytes_ = *num_read;

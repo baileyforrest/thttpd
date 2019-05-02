@@ -32,21 +32,6 @@ cc_library(
 )
 
 cc_library(
-    name = "file-reader",
-    srcs = [
-        "file-reader.cc",
-    ],
-    hdrs = [
-        "file-reader.h",
-    ],
-    deps = [
-        "//base",
-        "@absl//absl/strings",
-        "@absl//absl/types:span",
-    ],
-)
-
-cc_library(
     name = "http-request",
     srcs = [
         "http-request.cc",
@@ -89,11 +74,11 @@ cc_library(
     deps = [
         ":config",
         ":content-type",
-        ":file-reader",
         ":http-response",
         ":request-parser",
         ":thread-pool",
         "//base",
+        "//base:file-reader",
         "//base:scoped-fd",
         "//base:task-runner",
         "//base:util",
