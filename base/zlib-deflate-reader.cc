@@ -7,6 +7,10 @@
 namespace {
 
 constexpr int kCompressionLevel = 6;
+constexpr int kMemLevel = 8;
+
+// 16 adds gzip header.
+constexpr int kWindowBits = 16 + MAX_WBITS;
 
 }  // namespace
 
@@ -23,7 +27,8 @@ ZlibDeflateReader::ZlibDeflateReader(Reader* reader) : reader_(reader) {}
 ZlibDeflateReader::~ZlibDeflateReader() { deflateEnd(&stream_); }
 
 Result<void> ZlibDeflateReader::Init() {
-  if (deflateInit(&stream_, kCompressionLevel) != Z_OK) {
+  if (deflateInit2(&stream_, kCompressionLevel, Z_DEFLATED, kWindowBits,
+                   kMemLevel, Z_DEFAULT_STRATEGY) != Z_OK) {
     return Err("deflateInit failed");
   }
 
