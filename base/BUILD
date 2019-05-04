@@ -93,6 +93,17 @@ cc_test(
 )
 
 cc_library(
+    name = "stdin-reader",
+    hdrs = [
+        "stdin-reader.h",
+    ],
+    deps = [
+        ":base",
+        ":reader",
+    ],
+)
+
+cc_library(
     name = "task-runner",
     srcs = [
         "task-runner.cc",
@@ -128,5 +139,32 @@ cc_library(
         ":base",
         "@absl//absl/base",
         "@absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "zlib-deflate-reader",
+    srcs = [
+        "zlib-deflate-reader.cc",
+    ],
+    hdrs = [
+        "zlib-deflate-reader.h",
+    ],
+    linkopts = ["-lz"],
+    deps = [
+        ":base",
+        ":reader",
+    ],
+)
+
+cc_binary(
+    name = "zlib-deflate-reader_test",
+    srcs = [
+        "zlib-deflate-reader_test.cc",
+    ],
+    linkopts = ["-lz"],
+    deps = [
+        ":stdin-reader",
+        ":zlib-deflate-reader",
     ],
 )

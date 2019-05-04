@@ -1,5 +1,5 @@
-#ifndef MAIN_FILE_READER_H_
-#define MAIN_FILE_READER_H_
+#ifndef BASE_FILE_READER_H_
+#define BASE_FILE_READER_H_
 
 #include <cstdio>
 #include <memory>
@@ -25,6 +25,7 @@ class FileReader : public Reader {
   // Use C file API because it's faster than C++ streams.
   using FilePtr = std::unique_ptr<FILE, decltype(&fclose)>;
 
+  // Reader implementation:
   FileReader(std::string path, FilePtr file, size_t size);
 
   std::string path_;
@@ -33,4 +34,4 @@ class FileReader : public Reader {
   bool eof_ = false;
 };
 
-#endif  // MAIN_FILE_READER_H_
+#endif  // BASE_FILE_READER_H_
