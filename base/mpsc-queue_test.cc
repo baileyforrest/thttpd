@@ -84,21 +84,3 @@ TEST(MpscQueueTest, WaitNotEmpty) {
 
   thread.join();
 }
-
-TEST(MpscQueueTest, CancelWaitNotEmpty) {
-  MpscQueue<int> queue;
-  std::thread thread([&] {
-    EXPECT_FALSE(queue.WaitNotEmpty());
-    EXPECT_TRUE(queue.WaitNotEmpty());
-    EXPECT_FALSE(queue.Empty());
-    EXPECT_EQ(42, queue.Pop());
-  });
-
-  std::this_thread::sleep_for(std::chrono::milliseconds(50));
-  queue.CancelWaitNotEmpty();
-
-  std::this_thread::sleep_for(std::chrono::milliseconds(50));
-  queue.Push(42);
-
-  thread.join();
-}

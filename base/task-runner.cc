@@ -14,7 +14,7 @@ TaskRunner::~TaskRunner() {
 
 void TaskRunner::Stop() {
   running_.store(false, std::memory_order_release);
-  tasks_.CancelWaitNotEmpty();
+  PostTask([] {});  // Post empty task to break out of WaitNotEmpty().
   thread_.join();
 }
 
