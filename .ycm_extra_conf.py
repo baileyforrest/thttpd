@@ -4,7 +4,7 @@ def Settings( **kwargs ):
   flags = [
     '-x', 'c++',
     '-Wall', '-Wextra', '-Wno-unused-parameter',
-    '-std=c++0x',
+    '-std=c++14',
 
     '-I', '.',
 

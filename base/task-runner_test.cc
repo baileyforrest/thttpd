@@ -26,12 +26,12 @@ struct LockedVec {
 TEST(TaskRunnerTest, Basic) {
   constexpr int kIters = 100000;
   LockedVec<int> vec;
-  TaskRunner tr;
+  auto tr = TaskRunner::Create();
 
   for (int i = 0; i < kIters; ++i) {
-    tr.PostTask([&vec, i] { vec.PushBack(i); });
+    tr->PostTask([&vec, i] { vec.PushBack(i); });
   }
-  tr.Stop();
+  tr->Stop();
   ASSERT_EQ(kIters, vec.vec.size());
 
   for (int i = 0; i < kIters; ++i) {
@@ -46,7 +46,7 @@ TEST(TaskRunnerTest, MultiProducers) {
   std::atomic<int> cur_val{0};
 
   LockedVec<int> vec;
-  TaskRunner tr;
+  auto tr = TaskRunner::Create();
 
   std::vector<std::thread> threads;
   for (int i = 0; i < kNumThreads; ++i) {
@@ -56,7 +56,7 @@ TEST(TaskRunnerTest, MultiProducers) {
         if (my_value >= kIters) {
           break;
         }
-        tr.PostTask([&vec, my_value] { vec.PushBack(my_value); });
+        tr->PostTask([&vec, my_value] { vec.PushBack(my_value); });
       }
     });
   }
@@ -65,7 +65,7 @@ TEST(TaskRunnerTest, MultiProducers) {
     thread.join();
   }
 
-  tr.Stop();
+  tr->Stop();
   std::set<int> got_values(vec.vec.begin(), vec.vec.end());
 
   for (int i = 0; i < kIters; ++i) {

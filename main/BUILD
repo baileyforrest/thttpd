@@ -11,6 +11,23 @@ cc_binary(
 )
 
 cc_library(
+    name = "compression-cache",
+    srcs = [
+        "compression-cache.cc",
+    ],
+    hdrs = [
+        "compression-cache.h",
+    ],
+    deps = [
+        "//base:file-reader",
+        "//base:reader",
+        "//base:task-runner",
+        "//base:zlib-deflate-reader",
+        "@absl//absl/container:flat_hash_map",
+    ],
+)
+
+cc_library(
     name = "config",
     hdrs = [
         "config.h",

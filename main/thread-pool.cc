@@ -6,12 +6,12 @@
 
 namespace {
 
-std::vector<std::unique_ptr<TaskRunner>> MakeTaskRunners(size_t num) {
-  std::vector<std::unique_ptr<TaskRunner>> result;
+std::vector<std::shared_ptr<TaskRunner>> MakeTaskRunners(size_t num) {
+  std::vector<std::shared_ptr<TaskRunner>> result;
   result.reserve(num);
 
   for (size_t i = 0; i < num; ++i) {
-    result.push_back(absl::make_unique<TaskRunner>());
+    result.push_back(TaskRunner::Create());
   }
 
   return result;

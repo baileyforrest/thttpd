@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <memory>
 #include <thread>
 
 #include "base/mpsc-queue.h"
@@ -10,7 +11,13 @@ class TaskRunner {
  public:
   using Task = std::function<void()>;
 
-  TaskRunner();
+  // Returns NULL if not running in a TaskRunner.
+  static std::shared_ptr<TaskRunner> CurrentTaskRunner() {
+    return current_task_runner_;
+  }
+
+  static std::shared_ptr<TaskRunner> Create();
+
   TaskRunner(const TaskRunner&) = delete;
   TaskRunner& operator=(const TaskRunner&) = delete;
 
@@ -23,7 +30,12 @@ class TaskRunner {
 
   void PostTask(Task task);
 
+  bool IsCurrentThread();
+
  private:
+  static thread_local std::shared_ptr<TaskRunner> current_task_runner_;
+
+  TaskRunner();
   void RunLoop();
 
   // The thread tasks run on.

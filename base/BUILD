@@ -8,6 +8,7 @@ cc_library(
     hdrs = [
         "err.h",
         "logging.h",
+        "scoped-destructor.h",
     ],
     deps = [
         "@absl//absl/base",
