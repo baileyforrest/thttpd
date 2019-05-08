@@ -9,6 +9,7 @@ def Settings( **kwargs ):
     '-I', '.',
 
     '-I', 'third_party/googletest/googletest/include',
+    '-I', 'third_party/googletest/googlemock/include',
     '-I', 'third_party/abseil-cpp',
   ]
 

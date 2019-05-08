@@ -1,4 +1,5 @@
-#pragma once
+#ifndef BASE_TASK_RUNNER_H_
+#define BASE_TASK_RUNNER_H_
 
 #include <atomic>
 #include <memory>
@@ -46,3 +47,5 @@ class TaskRunner {
 
   MpscQueue<Task> tasks_;
 };
+
+#endif  // BASE_TASK_RUNNER_H_

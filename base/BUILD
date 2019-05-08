@@ -64,6 +64,31 @@ cc_test(
 )
 
 cc_library(
+    name = "once-callback",
+    srcs = [
+        "once-callback-internal.h",
+    ],
+    hdrs = [
+        "once-callback.h",
+    ],
+    deps = [
+        "@absl//absl/base",
+    ],
+)
+
+cc_test(
+    name = "once-callback_test",
+    srcs = [
+        "once-callback_test.cc",
+    ],
+    deps = [
+        ":once-callback",
+        "@absl//absl/memory",
+        "@gtest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "reader",
     hdrs = [
         "reader.h",
