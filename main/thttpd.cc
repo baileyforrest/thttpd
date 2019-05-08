@@ -45,7 +45,9 @@ Result<std::unique_ptr<Thttpd>> Thttpd::Create(const Config& config_in) {
 }
 
 Thttpd::Thttpd(const Config& config)
-    : config_(config), thread_pool_(config.num_worker_threads) {}
+    : config_(config),
+      thread_pool_(config.num_worker_threads),
+      compression_cache_(config.compression_cache_size) {}
 
 Result<void> Thttpd::Start() {
   ScopedFd listen_fd(

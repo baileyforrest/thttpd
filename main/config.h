@@ -9,6 +9,7 @@ struct Config {
   int num_worker_threads = 0;  // If 0, will pick based on number of cores.
   int verbosity = 1;
   std::string path_to_serve;
+  size_t compression_cache_size = 1000ul * 1000 * 1000;
 };
 
 #endif  // _MAIN_CONFIG_H_

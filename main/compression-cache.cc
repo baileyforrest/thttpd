@@ -106,7 +106,6 @@ void CompressionCache::ReadFile(std::string path,
                                 std::shared_ptr<TaskRunner> my_thread) {
   auto file = CachedFile::Create(path);
 
-  // TODO(bcf): Why can't we bind file?
   my_thread->PostTask(OnceCallback(&CompressionCache::OnReadFile, this,
                                    std::move(path), pending_read_it,
                                    std::move(file)));

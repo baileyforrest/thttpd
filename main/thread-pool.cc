@@ -21,7 +21,7 @@ std::vector<std::shared_ptr<TaskRunner>> MakeTaskRunners(size_t num) {
 
 ThreadPool::ThreadPool(size_t size) : task_runners_(MakeTaskRunners(size)) {}
 
-void ThreadPool::PostTask(Task task) {
+void ThreadPool::PostTask(OnceCallback task) {
   GetNextRunner()->PostTask(std::move(task));
 }
 

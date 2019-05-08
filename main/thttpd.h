@@ -7,6 +7,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "base/err.h"
 #include "base/mpsc-queue.h"
+#include "main/compression-cache.h"
 #include "main/config.h"
 #include "main/request-handler.h"
 #include "main/thread-pool.h"
@@ -30,6 +31,7 @@ class Thttpd {
 
   // Friend methods:
   void NotifySocketClosed(int fd);
+  CompressionCache* compression_cache() { return &compression_cache_; }
 
   void NotifyEvent(absl::string_view event);
   void AcceptNewClient(int listen_fd, int epoll_fd);
@@ -42,6 +44,7 @@ class Thttpd {
 
   ThreadPool thread_pool_;
   absl::flat_hash_map<int, std::shared_ptr<RequestHandler>> conn_fd_to_handler_;
+  CompressionCache compression_cache_;
 
   // Used for notifying the main loop of events.
   ScopedFd event_write_fd_;

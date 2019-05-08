@@ -10,12 +10,10 @@
 
 class ThreadPool {
  public:
-  using Task = std::function<void()>;
-
   explicit ThreadPool(size_t size);
 
   // Thread safe.
-  void PostTask(Task task);
+  void PostTask(OnceCallback task);
 
   TaskRunner* GetNextRunner();
 

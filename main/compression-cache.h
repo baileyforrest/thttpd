@@ -94,7 +94,7 @@ class CompressionCache {
 
 // Implementation:
 
-Result<ssize_t> CompressionCache::File::Read(absl::Span<char> buf) {
+inline Result<ssize_t> CompressionCache::File::Read(absl::Span<char> buf) {
   if (cur_chunk_ == file_->chunks().end()) {
     return -1;
   }

@@ -6,6 +6,7 @@
 class ContentType {
  public:
   static absl::string_view ForFilename(absl::string_view filename);
+  static bool ShouldCompress(absl::string_view content_type);
 };
 
 #endif  // MAIN_CONTENT_TYPE_H_
