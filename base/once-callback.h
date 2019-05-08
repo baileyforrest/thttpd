@@ -9,6 +9,8 @@
 
 class OnceCallback {
  public:
+  OnceCallback() = default;
+
   template <class F, class... Args>
   OnceCallback(F&& func, Args&&... args)
       : bound_function_(

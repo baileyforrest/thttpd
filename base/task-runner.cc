@@ -26,7 +26,7 @@ void TaskRunner::Stop() {
   thread_.join();
 }
 
-void TaskRunner::PostTask(Task task) { tasks_.Push(std::move(task)); }
+void TaskRunner::PostTask(OnceCallback task) { tasks_.Push(std::move(task)); }
 
 bool TaskRunner::IsCurrentThread() {
   return current_task_runner_.get() == this;
@@ -36,7 +36,7 @@ void TaskRunner::RunLoop() {
   while (running_.load(std::memory_order_acquire)) {
     tasks_.WaitNotEmpty();
     while (!tasks_.Empty()) {
-      Task task = tasks_.Pop();
+      OnceCallback task = tasks_.Pop();
       task();
     }
   }

@@ -61,9 +61,9 @@ void CompressionCache::RequestFile(absl::string_view path,
     }
   }
 
-  task_runner_->PostTask(std::bind(&CompressionCache::RequestFileSlowPath, this,
-                                   std::move(str_path), std::move(callback),
-                                   TaskRunner::CurrentTaskRunner()));
+  task_runner_->PostTask(OnceCallback(
+      &CompressionCache::RequestFileSlowPath, this, std::move(str_path),
+      std::move(callback), TaskRunner::CurrentTaskRunner()));
 }
 
 void CompressionCache::RequestFileSlowPath(std::string path,
@@ -96,8 +96,9 @@ void CompressionCache::RequestFileSlowPath(std::string path,
     return;
   }
 
-  caller->PostTask(std::bind(&CompressionCache::ReadFile, this, std::move(path),
-                             pending_read_it, task_runner_));
+  caller->PostTask(OnceCallback(&CompressionCache::ReadFile, this,
+                                std::move(path), pending_read_it,
+                                task_runner_));
 }
 
 void CompressionCache::ReadFile(std::string path,
@@ -106,9 +107,9 @@ void CompressionCache::ReadFile(std::string path,
   auto file = CachedFile::Create(path);
 
   // TODO(bcf): Why can't we bind file?
-  my_thread->PostTask(std::bind(&CompressionCache::OnReadFile, this,
-                                std::move(path), pending_read_it,
-                                std::move(*file)));
+  my_thread->PostTask(OnceCallback(&CompressionCache::OnReadFile, this,
+                                   std::move(path), pending_read_it,
+                                   std::move(file)));
 }
 
 void CompressionCache::OnReadFile(std::string path,

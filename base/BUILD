@@ -139,6 +139,7 @@ cc_library(
     ],
     deps = [
         ":mpsc-queue",
+        ":once-callback",
     ],
 )
 

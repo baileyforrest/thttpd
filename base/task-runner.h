@@ -6,12 +6,11 @@
 #include <thread>
 
 #include "base/mpsc-queue.h"
+#include "base/once-callback.h"
 
 // A basic TaskRunner to run tasks asynchronously in order.
 class TaskRunner {
  public:
-  using Task = std::function<void()>;
-
   // Returns NULL if not running in a TaskRunner.
   static std::shared_ptr<TaskRunner> CurrentTaskRunner() {
     return current_task_runner_;
@@ -29,7 +28,7 @@ class TaskRunner {
   // until all pending tasks are complete.
   void Stop();
 
-  void PostTask(Task task);
+  void PostTask(OnceCallback task);
 
   bool IsCurrentThread();
 
@@ -45,7 +44,7 @@ class TaskRunner {
   // True if the task runner is still running.
   std::atomic<bool> running_{true};
 
-  MpscQueue<Task> tasks_;
+  MpscQueue<OnceCallback> tasks_;
 };
 
 #endif  // BASE_TASK_RUNNER_H_
