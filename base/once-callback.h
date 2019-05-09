@@ -9,13 +9,14 @@
 
 class OnceCallback {
  public:
+  using BoundFunctionPtr =
+      std::unique_ptr<once_callback_internal::BoundFunction>;
   OnceCallback() = default;
+  explicit OnceCallback(BoundFunctionPtr bound_function)
+      : bound_function_(std::move(bound_function)) {}
 
-  template <class F, class... Args>
-  OnceCallback(F&& func, Args&&... args)
-      : bound_function_(
-            new once_callback_internal::BoundFunctionImpl<F, Args...>(
-                std::forward<F>(func), std::forward<Args>(args)...)) {}
+  OnceCallback(OnceCallback&& other) = default;
+  OnceCallback& operator=(OnceCallback&& other) = default;
 
   void operator()() {
     ABSL_ASSERT(bound_function_);
@@ -24,7 +25,15 @@ class OnceCallback {
   }
 
  private:
-  std::unique_ptr<once_callback_internal::BoundFunction> bound_function_;
+  BoundFunctionPtr bound_function_;
 };
+
+template <class F, class... Args>
+OnceCallback BindOnce(F&& func, Args&&... args) {
+  OnceCallback::BoundFunctionPtr bound_function(
+      new once_callback_internal::BoundFunctionImpl<F, Args...>(
+          std::forward<F>(func), std::forward<Args>(args)...));
+  return OnceCallback(std::move(bound_function));
+}
 
 #endif  // ONCE_CALLBACK_H_

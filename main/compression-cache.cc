@@ -4,6 +4,7 @@
 
 #include "base/err.h"
 #include "base/file-reader.h"
+#include "base/logging.h"
 #include "base/scoped-destructor.h"
 #include "base/zlib-deflate-reader.h"
 
@@ -18,6 +19,7 @@ CompressionCache::CachedFile::Create(absl::string_view path) {
   auto insert_at = chunks.before_begin();
   size_t chunk_length = 0;
   bool eof = false;
+  size_t total_size = 0;
 
   while (!eof) {
     insert_at = chunks.emplace_after(insert_at);
@@ -30,21 +32,27 @@ CompressionCache::CachedFile::Create(absl::string_view path) {
         eof = true;
         break;
       }
+      total_size += num_read;
     }
   }
 
-  return std::make_shared<CachedFile>(std::move(chunks), chunk_length);
+  return std::make_shared<CachedFile>(std::move(chunks), chunk_length,
+                                      total_size);
 }
 
 CompressionCache::CachedFile::CachedFile(ChunkList chunks,
-                                         size_t last_chunk_length)
-    : chunks_(std::move(chunks)), last_chunk_length_(last_chunk_length) {}
+                                         size_t last_chunk_length, size_t size)
+    : chunks_(std::move(chunks)),
+      last_chunk_length_(last_chunk_length),
+      size_(size) {}
 
 CompressionCache::File::File(std::shared_ptr<CachedFile> file)
-    : file_(std::move(file)), cur_chunk_(file->chunks().cbegin()) {}
+    : file_(std::move(file)), cur_chunk_(file_->chunks().cbegin()) {}
 
 CompressionCache::CompressionCache(size_t max_size_bytes)
-    : max_size_bytes_(max_size_bytes) {}
+    : max_size_bytes_(max_size_bytes),
+      unlocked_path_to_cached_file_(std::make_shared<PathToCachedFile>()),
+      task_runner_(TaskRunner::Create()) {}
 
 void CompressionCache::RequestFile(absl::string_view path,
                                    FileCallback callback) {
@@ -61,9 +69,9 @@ void CompressionCache::RequestFile(absl::string_view path,
     }
   }
 
-  task_runner_->PostTask(OnceCallback(
-      &CompressionCache::RequestFileSlowPath, this, std::move(str_path),
-      std::move(callback), TaskRunner::CurrentTaskRunner()));
+  task_runner_->PostTask(BindOnce(&CompressionCache::RequestFileSlowPath, this,
+                                  std::move(str_path), std::move(callback),
+                                  TaskRunner::CurrentTaskRunner()));
 }
 
 void CompressionCache::RequestFileSlowPath(std::string path,
@@ -96,9 +104,8 @@ void CompressionCache::RequestFileSlowPath(std::string path,
     return;
   }
 
-  caller->PostTask(OnceCallback(&CompressionCache::ReadFile, this,
-                                std::move(path), pending_read_it,
-                                task_runner_));
+  caller->PostTask(BindOnce(&CompressionCache::ReadFile, this, std::move(path),
+                            pending_read_it, task_runner_));
 }
 
 void CompressionCache::ReadFile(std::string path,
@@ -106,9 +113,9 @@ void CompressionCache::ReadFile(std::string path,
                                 std::shared_ptr<TaskRunner> my_thread) {
   auto file = CachedFile::Create(path);
 
-  my_thread->PostTask(OnceCallback(&CompressionCache::OnReadFile, this,
-                                   std::move(path), pending_read_it,
-                                   std::move(file)));
+  my_thread->PostTask(BindOnce(&CompressionCache::OnReadFile, this,
+                               std::move(path), pending_read_it,
+                               std::move(file)));
 }
 
 void CompressionCache::OnReadFile(std::string path,

@@ -196,10 +196,12 @@ void Thttpd::AcceptNewClient(int listen_fd, int epoll_fd) {
   }
 
   int raw_conn_sock = *conn_sock;
-  conn_fd_to_handler_.emplace(
-      raw_conn_sock,
-      std::make_shared<RequestHandler>(
-          addr_str, this, thread_pool_.GetNextRunner(), std::move(conn_sock)));
+
+  auto request_handler = std::make_shared<RequestHandler>(
+      addr_str, this, thread_pool_.GetNextRunner(), std::move(conn_sock));
+  request_handler->Init(request_handler);
+
+  conn_fd_to_handler_.emplace(raw_conn_sock, std::move(request_handler));
 }
 
 bool Thttpd::HandleEvents(int event_fd) {
@@ -234,13 +236,11 @@ void Thttpd::HandleClient(int fd, uint32_t epoll_events) {
     LOG(ERR) << "Unknown socket!";
     return;
   }
-  std::shared_ptr<RequestHandler>& request_handler = it->second;
-
   bool can_read = epoll_events & EPOLLIN;
   bool can_write = epoll_events & EPOLLOUT;
 
-  request_handler->task_runner()->PostTask(
-      [request_handler, can_read, can_write] {
-        request_handler->HandleUpdate(can_read, can_write);
-      });
+  const auto& request_handler = it->second;
+
+  request_handler->task_runner()->PostTask(BindOnce(
+      &RequestHandler::HandleUpdate, request_handler, can_read, can_write));
 }

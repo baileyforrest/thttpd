@@ -35,6 +35,8 @@ class TaskRunner {
  private:
   static thread_local std::shared_ptr<TaskRunner> current_task_runner_;
 
+  void Init(std::shared_ptr<TaskRunner> shared_this);
+
   TaskRunner();
   void RunLoop();
 

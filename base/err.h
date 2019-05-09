@@ -38,44 +38,54 @@ class Result {
  public:
   Result(T result)  // NOLINT(runtime/explicit)
       : result_(std::move(result)),
-        ok_(true) {}
+        state_(State::kOk) {}
   Result(Err error)  // NOLINT(runtime/explicit)
       : err_(std::move(error)),
-        ok_(false) {}
+        state_(State::kErr) {}
   Result(Result&& other) { *this = std::move(other); }
   Result& operator=(Result&& other) {
     Destroy();
-    ok_ = other.ok_;
-    if (ok_) {
-      result_ = std::move(other.result_);
-    } else {
-      err_ = std::move(other.err_);
+    state_ = other.state_;
+    switch (state_) {
+      case State::kOk:
+        new (&result_) T(std::move(other.result_));
+        break;
+      case State::kErr:
+        new (&err_) Err(std::move(other.err_));
+        break;
+      case State::kDestroyed:
+        break;
     }
     return *this;
   }
 
   ~Result() { Destroy(); }
 
-  bool ok() const { return ok_; }
+  bool ok() const { return state_ == State::kOk; }
 
   T& result() {
-    ABSL_ASSERT(ok_);
+    ABSL_ASSERT(state_ == State::kOk);
     return result_;
   }
   T& operator*() { return result(); }
   T* operator->() { return &result(); }
 
   Err& err() {
-    ABSL_ASSERT(!ok_);
+    ABSL_ASSERT(state_ == State::kErr);
     return err_;
   }
 
  private:
   void Destroy() {
-    if (ok()) {
-      result_.T::~T();
-    } else {
-      err_.Err::~Err();
+    switch (state_) {
+      case State::kOk:
+        result_.T::~T();
+        break;
+      case State::kErr:
+        err_.Err::~Err();
+        break;
+      case State::kDestroyed:
+        break;
     }
   }
 
@@ -83,7 +93,13 @@ class Result {
     T result_;
     Err err_;
   };
-  bool ok_ = false;
+  enum class State : uint8_t {
+    kOk,
+    kErr,
+    kDestroyed,
+  };
+
+  State state_ = State::kDestroyed;
 };
 
 template <>
@@ -113,6 +129,7 @@ class Result<void> {
  private:
   Err err_;
   bool ok_ = false;
+  bool destroyed_ = false;
 };
 
 #define TRY(expr)       \

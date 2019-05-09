@@ -7,12 +7,12 @@ thread_local std::shared_ptr<TaskRunner> TaskRunner::current_task_runner_;
 
 // static
 std::shared_ptr<TaskRunner> TaskRunner::Create() {
-  return std::shared_ptr<TaskRunner>(new TaskRunner);
+  std::shared_ptr<TaskRunner> ret(new TaskRunner);
+  ret->Init(ret);
+  return ret;
 }
 
-TaskRunner::TaskRunner() {
-  thread_ = std::thread([this] { RunLoop(); });
-}
+TaskRunner::TaskRunner() = default;
 
 TaskRunner::~TaskRunner() {
   if (running_.load(std::memory_order_relaxed)) {
@@ -22,7 +22,7 @@ TaskRunner::~TaskRunner() {
 
 void TaskRunner::Stop() {
   running_.store(false, std::memory_order_release);
-  PostTask([] {});  // Post empty task to break out of WaitNotEmpty().
+  PostTask(BindOnce([] {}));  // Post empty task to break out of WaitNotEmpty().
   thread_.join();
 }
 
@@ -30,6 +30,14 @@ void TaskRunner::PostTask(OnceCallback task) { tasks_.Push(std::move(task)); }
 
 bool TaskRunner::IsCurrentThread() {
   return current_task_runner_.get() == this;
+}
+
+void TaskRunner::Init(std::shared_ptr<TaskRunner> shared_this) {
+  thread_ =
+      std::thread([ this, shared_this = std::move(shared_this) ]() mutable {
+        current_task_runner_ = std::move(shared_this);
+        RunLoop();
+      });
 }
 
 void TaskRunner::RunLoop() {

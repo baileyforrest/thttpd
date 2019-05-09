@@ -21,7 +21,7 @@ class MockInterface {
 
 TEST(OnceCallbackTest, BindLambda) {
   bool called = false;
-  OnceCallback bound([&] { called = true; });
+  auto bound = BindOnce([&] { called = true; });
   bound();
   EXPECT_TRUE(called);
 }
@@ -29,7 +29,7 @@ TEST(OnceCallbackTest, BindLambda) {
 TEST(OnceCallbackTest, MethodCopy) {
   MockInterface mi;
   std::string s = "foo";
-  OnceCallback bound(&MockInterface::MethodCopy, &mi, s);
+  auto bound = BindOnce(&MockInterface::MethodCopy, &mi, s);
   s.clear();
   EXPECT_CALL(mi, MethodCopy("foo"));
   bound();
@@ -38,7 +38,7 @@ TEST(OnceCallbackTest, MethodCopy) {
 TEST(OnceCallbackTest, MethodRef) {
   MockInterface mi;
   auto s = absl::make_unique<std::string>("foo");
-  OnceCallback bound(&MockInterface::MethodRef, &mi, *s);
+  auto bound = BindOnce(&MockInterface::MethodRef, &mi, *s);
   s.reset();
   EXPECT_CALL(mi, MethodRef("foo"));
   bound();
@@ -48,7 +48,7 @@ TEST(OnceCallbackTest, MethodMove) {
   MockInterface mi;
   auto s = absl::make_unique<std::string>("foo");
 
-  OnceCallback bound(&MockInterface::MethodMove, &mi, std::move(s));
+  auto bound = BindOnce(&MockInterface::MethodMove, &mi, std::move(s));
   s.reset();
   EXPECT_CALL(mi, MethodMove(_))
       .WillOnce([](std::unique_ptr<std::string> s) {

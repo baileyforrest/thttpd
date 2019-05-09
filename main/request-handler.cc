@@ -7,7 +7,6 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#include <map>
 #include <utility>
 
 #include "base/logging.h"
@@ -30,30 +29,43 @@ RequestHandler::RequestHandler(absl::string_view client_ip, Thttpd* thttpd,
       task_runner_(task_runner),
       fd_(std::move(fd)) {}
 
+void RequestHandler::Init(std::shared_ptr<RequestHandler> shared_this) {
+  shared_this_ = std::move(shared_this);
+}
+
 void RequestHandler::HandleUpdate(bool can_read, bool can_write) {
-  if (socket_closed_) {
-    return;
-  }
-  while (true) {
-    State old_state = state_;
+  ABSL_ASSERT(task_runner_->IsCurrentThread());
+  can_read_ = can_read;
+  can_write_ = can_write;
+  Run();
+}
+
+void RequestHandler::Run() {
+  ABSL_ASSERT(task_runner_->IsCurrentThread());
+  State old_state = state_;
+  do {
     switch (state_) {
       case State::kPendingRequest:
-        state_ = HandlePendingRequest(can_read);
+        state_ = HandlePendingRequest();
         break;
+      case State::kOpeningCompressedStream:
+        return;
+      case State::kStreamOpened:
+        state_ = HandleStreamOpened();
       case State::kSendingResponseHeader:
-        state_ = HandleSendingResponseHeader(can_write);
+        state_ = HandleSendingResponseHeader();
         break;
       case State::kSendingResponseBody:
-        state_ = HandleSendingResponseBody(can_write);
+        state_ = HandleSendingResponseBody();
         break;
+      case State::kSocketClosed:
+        return;
     }
-    if (state_ == old_state) {
-      break;
-    }
-  }
+  } while (state_ != old_state);
 }
 
 Result<bool> RequestHandler::WriteBytes(const char* source) {
+  ABSL_ASSERT(task_runner_->IsCurrentThread());
   ssize_t remain_bytes = tx_buf_bytes_ - tx_buf_offset_;
   ssize_t sent = send(*fd_, source + tx_buf_offset_, remain_bytes,
                       MSG_NOSIGNAL | MSG_DONTWAIT);
@@ -68,8 +80,9 @@ Result<bool> RequestHandler::WriteBytes(const char* source) {
   return sent == remain_bytes;
 }
 
-RequestHandler::State RequestHandler::HandlePendingRequest(bool can_read) {
-  if (!can_read) {
+RequestHandler::State RequestHandler::HandlePendingRequest() {
+  ABSL_ASSERT(task_runner_->IsCurrentThread());
+  if (!can_read_) {
     return state_;
   }
   while (true) {
@@ -85,9 +98,9 @@ RequestHandler::State RequestHandler::HandlePendingRequest(bool can_read) {
 
     // Socket was closed.
     if (failed || ret == 0) {
-      socket_closed_ = true;
+      shared_this_.reset();
       thttpd_->NotifySocketClosed(*fd_);
-      return State::kPendingRequest;
+      return State::kSocketClosed;
     }
 
     auto state = request_parser_.AddData({buf, static_cast<size_t>(ret)});
@@ -137,6 +150,35 @@ RequestHandler::State RequestHandler::HandlePendingRequest(bool can_read) {
 
     if (S_ISDIR(stat_buf.st_mode)) {
       request_file_path += kIndexHtml;
+      if (stat(request_file_path.c_str(), &stat_buf) < 0) {
+        VLOG(1) << "Failed to stat " << request_file_path << ": "
+                << strerror(errno);
+        // TODO(bcf): Send 404 error.
+        return State::kPendingRequest;
+      }
+    }
+
+    absl::string_view content_type =
+        ContentType::ForFilename(request_file_path);
+
+    response_header_fields_.emplace("Content-Type", std::string(content_type));
+    auto modified_date = HttpResponse::FormatTime(stat_buf.st_mtime);
+    if (!modified_date.ok()) {
+      VLOG(1) << "Failed to generate Last-Modified";
+    } else {
+      response_header_fields_.emplace("Last-Modified",
+                                      std::move(*modified_date));
+    }
+
+    // TODO(bcf): Enable compression.
+    if (false && ContentType::ShouldCompress(content_type)) {
+      thttpd_->compression_cache()->RequestFile(
+          request_file_path, [self = shared_this_](auto file) {
+            self->task_runner_->PostTask(
+                BindOnce(&RequestHandler::OnCompressedFileRead, self.get(),
+                         std::move(file)));
+          });
+      return State::kOpeningCompressedStream;
     }
 
     auto file_or = FileReader::Create(request_file_path);
@@ -146,30 +188,12 @@ RequestHandler::State RequestHandler::HandlePendingRequest(bool can_read) {
       return State::kPendingRequest;
     }
 
-    std::map<std::string, std::string> headers = {
-        {"Content-Length", absl::StrCat(file_or->size())},
-        {"Content-Type",
-         std::string(ContentType::ForFilename(request_file_path))},
-    };
-    auto modified_date = HttpResponse::FormatTime(stat_buf.st_mtime);
-    if (!modified_date.ok()) {
-      VLOG(1) << "Failed to generate Last-Modified";
-    } else {
-      headers.emplace("Last-Modified", std::move(*modified_date));
-    }
+    response_header_fields_.emplace("Content-Length",
+                                    absl::StrCat(file_or->size()));
 
-    auto response =
-        HttpResponse::BuildWithDefaultHeaders(HttpResponse::Code::kOk, headers);
-    std::ostringstream oss;
-    oss << response;
+    reader_ = absl::make_unique<FileReader>(std::move(*file_or));
 
-    // Set up variables for next state.
-    current_response_header_ = oss.str();
-    current_file_ = std::move(*file_or);
-    tx_buf_offset_ = 0;
-    tx_buf_bytes_ = current_response_header_.size();
-
-    return State::kSendingResponseHeader;
+    return State::kStreamOpened;
   }
 
   // Shouldn't reach here.
@@ -177,15 +201,48 @@ RequestHandler::State RequestHandler::HandlePendingRequest(bool can_read) {
   return State::kPendingRequest;
 }
 
-RequestHandler::State RequestHandler::HandleSendingResponseHeader(
-    bool can_write) {
-  if (!can_write) {
+void RequestHandler::OnCompressedFileRead(Result<CompressionCache::File> file) {
+  ABSL_ASSERT(task_runner_->IsCurrentThread());
+  if (file.ok()) {
+    response_header_fields_.emplace("Content-Length",
+                                    absl::StrCat(file->size()));
+    reader_ = absl::make_unique<CompressionCache::File>(std::move(*file));
+    state_ = State::kStreamOpened;
+  } else {
+    // TODO(bcf): Send 400 error.
+    state_ = State::kPendingRequest;
+  }
+
+  Run();
+}
+
+RequestHandler::State RequestHandler::HandleStreamOpened() {
+  ABSL_ASSERT(task_runner_->IsCurrentThread());
+  ABSL_ASSERT(reader_);
+  auto response = HttpResponse::BuildWithDefaultHeaders(
+      HttpResponse::Code::kOk, response_header_fields_);
+  response_header_fields_.clear();
+
+  std::ostringstream oss;
+  oss << response;
+
+  // Set up variables for next state.
+  response_header_string_ = oss.str();
+  tx_buf_offset_ = 0;
+  tx_buf_bytes_ = response_header_string_.size();
+
+  return State::kSendingResponseHeader;
+}
+
+RequestHandler::State RequestHandler::HandleSendingResponseHeader() {
+  ABSL_ASSERT(task_runner_->IsCurrentThread());
+  if (!can_write_) {
     return state_;
   }
 
-  ABSL_ASSERT(tx_buf_bytes_ == current_response_header_.size());
+  ABSL_ASSERT(tx_buf_bytes_ == response_header_string_.size());
   while (tx_buf_offset_ < tx_buf_bytes_) {
-    auto send_result = WriteBytes(current_response_header_.data());
+    auto send_result = WriteBytes(response_header_string_.data());
     if (!send_result.ok()) {
       LOG(ERR) << send_result.err();
       // TODO(bcf): Send 500 error.
@@ -196,6 +253,7 @@ RequestHandler::State RequestHandler::HandleSendingResponseHeader(
       return state_;
     }
   }
+  response_header_string_.clear();
 
   // Set up variables for next state.
   tx_buf_offset_ = 0;
@@ -203,17 +261,16 @@ RequestHandler::State RequestHandler::HandleSendingResponseHeader(
   return State::kSendingResponseBody;
 }
 
-RequestHandler::State RequestHandler::HandleSendingResponseBody(
-    bool can_write) {
-  if (!can_write) {
+RequestHandler::State RequestHandler::HandleSendingResponseBody() {
+  ABSL_ASSERT(task_runner_->IsCurrentThread());
+  if (!can_write_) {
     return state_;
   }
 
   while (true) {
     // Read the next chunk of the file.
     if (tx_buf_offset_ == tx_buf_bytes_) {
-      auto num_read =
-          current_file_->Read(absl::MakeSpan(tx_buf_, sizeof(tx_buf_)));
+      auto num_read = reader_->Read(absl::MakeSpan(tx_buf_, sizeof(tx_buf_)));
       if (!num_read.ok()) {
         VLOG(1) << "Read failed: " << num_read.err();
         // TODO(bcf): Send 500
@@ -239,8 +296,7 @@ RequestHandler::State RequestHandler::HandleSendingResponseBody(
   }
 
   // Clear state and get ready for next request.
-  current_response_header_.clear();
-  current_file_.reset();
+  reader_.reset();
   tx_buf_offset_ = 0;
   tx_buf_bytes_ = 0;
   return State::kPendingRequest;

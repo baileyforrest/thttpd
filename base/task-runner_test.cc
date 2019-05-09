@@ -29,7 +29,7 @@ TEST(TaskRunnerTest, Basic) {
   auto tr = TaskRunner::Create();
 
   for (int i = 0; i < kIters; ++i) {
-    tr->PostTask([&vec, i] { vec.PushBack(i); });
+    tr->PostTask(BindOnce([&vec, i] { vec.PushBack(i); }));
   }
   tr->Stop();
   ASSERT_EQ(kIters, vec.vec.size());
@@ -56,7 +56,7 @@ TEST(TaskRunnerTest, MultiProducers) {
         if (my_value >= kIters) {
           break;
         }
-        tr->PostTask([&vec, my_value] { vec.PushBack(my_value); });
+        tr->PostTask(BindOnce([&vec, my_value] { vec.PushBack(my_value); }));
       }
     });
   }

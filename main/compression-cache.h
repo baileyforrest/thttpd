@@ -24,14 +24,16 @@ class CompressionCache {
   class CachedFile {
    public:
     static Result<std::shared_ptr<CachedFile>> Create(absl::string_view path);
-    CachedFile(ChunkList chunks, size_t last_chunk_length);
+    CachedFile(ChunkList chunks, size_t last_chunk_length, size_t size);
 
     const ChunkList& chunks() const { return chunks_; }
     size_t last_chunk_length() const { return last_chunk_length_; }
+    size_t size() const { return size_; }
 
    private:
     const ChunkList chunks_;
-    const size_t last_chunk_length_ = 0;
+    const size_t last_chunk_length_;
+    const size_t size_;
   };
 
  public:
@@ -42,6 +44,8 @@ class CompressionCache {
 
     // Reader implementation:
     Result<ssize_t> Read(absl::Span<char> buf) override;
+
+    size_t size() const { return file_->size(); }
 
    private:
     friend class CompressionCache;
@@ -84,7 +88,7 @@ class CompressionCache {
   ABSL_CACHELINE_ALIGNED std::shared_ptr<const PathToCachedFile>
       unlocked_path_to_cached_file_;
 
-  ABSL_CACHELINE_ALIGNED std::shared_ptr<TaskRunner> task_runner_;
+  const ABSL_CACHELINE_ALIGNED std::shared_ptr<TaskRunner> task_runner_;
 
   // Owned by |task_runner_|.
   // TODO(bcf): Invalidation based on inotify.
